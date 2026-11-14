@@ -1,5 +1,9 @@
 # ArrPorter auf Unraid einrichten
 
+Radarr und Sonarr starten die Importskripte direkt als **Custom Script**. Bei einer nativen Linux-Installation trägst du dafür den absoluten Pfad zum jeweiligen Skript ein. Die Werkzeuge und Dateirechte müssen für den Benutzer verfügbar sein, unter dem Radarr bzw. Sonarr läuft. Zum manuellen Test führst du das Skript als dieser Benutzer aus, zum Beispiel im Projektordner mit `radarr_eventtype=Test bash radarr/radarr-import-chain.sh` oder `sonarr_eventtype=Test bash sonarr/sonarr-uppollo.sh`.
+
+Die folgenden Mounts und Containerbefehle beschreiben die Einrichtung auf **Unraid mit containerisierten Diensten**. Docker wird vom mitgelieferten **automatischen Unraid-Cleanup** benötigt; für die Übergabe an upPollo kannst du diesen optionalen Schritt auslassen.
+
 ## 1. Voraussetzungen und Pfade
 
 Benötigt werden ein bereits funktionierender Radarr- bzw. Sonarr-Import, ein upPollo-Server mit aktivierter API und für den automatischen Cleanup qBittorrent mit Web-API. Radarr/Sonarr brauchen Lesezugriff auf den ursprünglichen Download und die importierte Datei; upPollo und qBittorrent müssen Transit und endgültiges Seeding-Ziel unter den erwarteten Pfaden sehen. Der Cleanup liest die datierten upPollo-Textlogs auf dem Host. Das mitgelieferte Setup für den kombinierten Cleanup setzt beide Arr-Container voraus.
