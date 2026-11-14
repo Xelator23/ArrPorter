@@ -1,0 +1,14 @@
+# Bash configuration. Copy as uppollo.conf and protect with chmod 600.
+UPPOLLO_URL='http://uppollo.example.invalid:8080/api/upload'
+API_KEY=''
+SONARR_URL='http://sonarr.example.invalid:8989'
+SONARR_API_KEY=''
+QBIT_URL='http://qbittorrent.example.invalid:8080'
+QBIT_USER=''
+QBIT_PASS=''
+TRANSIT_BASE='/data/arrporter-transit/sonarr'
+CLIENT_UPLOAD_BASE='/data/torrents/upload'
+SPECIAL_GROUP=''
+CLIENT_SPECIAL_BASE='/data/torrents/special'
+DRY_RUN=true
+BLACKHOLE_BASE='/data/downloads/complete/tv'

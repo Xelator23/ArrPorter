@@ -1,0 +1,6 @@
+# Shell arrays: group names without the separator, matched as a complete suffix.
+EXCLUDED_GROUPS=('FuN' 'FUN-Low')
+EXCLUDED_INDEXERS=()
+NFO_REQUIRED_GROUPS=()
+declare -A ALLOWED_TAGS=([SAMPLE]=false)
+declare -A ALLOWED_RESOLUTIONS=([1080p]=true [2160p]=true [720p]=false)

@@ -1,0 +1,5 @@
+# Host settings only. Per-application credentials are in radarr/cleanup.conf
+# and sonarr/cleanup.conf, created once by setup.sh.
+RADARR_CONTAINER='Radarr'
+SONARR_CONTAINER='Sonarr'
+UPPOLLO_LOG_DIR='/mnt/user/appdata/uppollo/logs'
