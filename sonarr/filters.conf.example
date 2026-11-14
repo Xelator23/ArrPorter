@@ -1,6 +1,76 @@
-# Shell arrays: group names without the separator, matched as a complete suffix.
-EXCLUDED_GROUPS=('FuN' 'FUN-Low')
-EXCLUDED_INDEXERS=()
-NFO_REQUIRED_GROUPS=()
-declare -A ALLOWED_TAGS=([SAMPLE]=false)
-declare -A ALLOWED_RESOLUTIONS=([1080p]=true [2160p]=true [720p]=false)
+# Sonarr · ArrPorter
+# Als filters.conf im selben Verzeichnis speichern. Eine Beispielregel wird aktiv,
+# wenn du das führende # vor ihrem Eintrag entfernst.
+
+# ------------------------------------------------------------------------
+# AUFLÖSUNGEN
+# ------------------------------------------------------------------------
+# Mindestens eine erkannte Auflösung muss auf "true" stehen.
+# Eine erkannte Auflösung mit "false" sperrt das Release.
+# Bei einem Staffelpack prüft Sonarr das Release und jede Videodatei.
+declare -A ALLOWED_RESOLUTIONS=()
+ALLOWED_RESOLUTIONS["2160p"]="true"
+ALLOWED_RESOLUTIONS["1080p"]="true"
+ALLOWED_RESOLUTIONS["720p"]="false"
+# ALLOWED_RESOLUTIONS["1080i"]="true"
+# ALLOWED_RESOLUTIONS["576p"]="false"
+# ALLOWED_RESOLUTIONS["480p"]="false"
+
+# ------------------------------------------------------------------------
+# RELEASE-TAGS
+# ------------------------------------------------------------------------
+# "false" sperrt bei einem Treffer. "true" erlaubt den Tag, ohne ihn zu verlangen.
+# Tags werden als ganze Kennzeichnung erkannt, unabhängig von der Schreibweise.
+declare -A ALLOWED_TAGS=()
+
+# Dynamikumfang und Farbtiefe
+ALLOWED_TAGS["DV"]="true"
+ALLOWED_TAGS["DoVi"]="true"
+ALLOWED_TAGS["HDR"]="true"
+ALLOWED_TAGS["HDR10"]="true"
+ALLOWED_TAGS["HDR10+"]="true"
+ALLOWED_TAGS["HDR10PLUS"]="true"
+ALLOWED_TAGS["HLG"]="true"
+ALLOWED_TAGS["SDR"]="true"
+ALLOWED_TAGS["10bit"]="true"
+ALLOWED_TAGS["12bit"]="true"
+
+# Quellen und Verarbeitung
+ALLOWED_TAGS["SAMPLE"]="false"
+# ALLOWED_TAGS["CAM"]="false"
+# ALLOWED_TAGS["HDCAM"]="false"
+# ALLOWED_TAGS["TS"]="false"
+# ALLOWED_TAGS["TC"]="false"
+# ALLOWED_TAGS["DVDSCR"]="false"
+# ALLOWED_TAGS["DVDRip"]="false"
+# ALLOWED_TAGS["VHSRip"]="false"
+# ALLOWED_TAGS["SATRip"]="false"
+
+# ------------------------------------------------------------------------
+# RELEASE-GRUPPEN
+# ------------------------------------------------------------------------
+# Gruppennamen ohne führenden Bindestrich eintragen. Das vollständige Suffix
+# zählt: "FuN" trifft auf -FUN, für -FUN-Low ist ein eigener Eintrag nötig.
+EXCLUDED_GROUPS=(
+    "FuN" "FUN-Low"
+    # "1XBET" "MEGA" "Whistler" "WOTT"
+    # "HELD" "FSX" "w00t" "BB" "266ers"
+)
+
+# Diese Gruppen erfordern eine brauchbare NFO. Zum Aktivieren einen oder
+# mehrere Gruppennamen als eigene Zeile innerhalb der Klammern eintragen.
+NFO_REQUIRED_GROUPS=(
+    # "TSCC" "ZeroTwo" "VECTOR"
+    # "UNFIrED" "WAREZCX" "DiVA"
+)
+
+# ------------------------------------------------------------------------
+# INDEXER UND TRACKER
+# ------------------------------------------------------------------------
+# Ein Teil des Indexernamens oder der Tracker-Adresse genügt als Treffer.
+# Groß- und Kleinschreibung spielt keine Rolle.
+# Bei Usenet Blackhole entfällt die Prüfung der ursprünglichen Downloadquelle.
+EXCLUDED_INDEXERS=(
+    # "Beispiel-Indexer"
+    # "tracker.example.invalid"
+)
