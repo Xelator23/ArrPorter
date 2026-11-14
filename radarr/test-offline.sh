@@ -10,6 +10,28 @@ bash -n "$HERE/radarr-uppollo.sh"
 ROOT=$(mktemp -d)
 trap 'rm -rf -- "${ROOT:?}"' EXIT
 mkdir -p "$ROOT/bin" "$ROOT/media" "$ROOT/upload"
+# The HTTP fixture for the Python srrDB reader is local to these test processes.
+cat > "$ROOT/bin/sitecustomize.py" <<'PY'
+import io
+import json
+import os
+import urllib.request
+
+class Fixture:
+    def open(self, url, timeout):
+        assert url.startswith('https://api.srrdb.com/v1/details/'), url
+        if os.getenv('MOCK_SRRDB_MISSING'):
+            release = url.rsplit('/', 1)[1]
+            result = {'name': release, 'files': [], 'archived-files': [
+                {'name': 'original.mkv', 'size': 14},
+                {'name': 'Subs/forced.idx', 'size': 12}]}
+        else:
+            result = []
+        return io.BytesIO(json.dumps(result).encode())
+
+urllib.request.build_opener = lambda *handlers: Fixture()
+PY
+export PYTHONPATH="$ROOT/bin"
 cat > "$ROOT/filters.conf" <<'FILTERS'
 EXCLUDED_INDEXERS=('blocked-indexer')
 EXCLUDED_GROUPS=()
@@ -82,6 +104,11 @@ setup_case dry
 run --dry-run
 [[ ! -e "$MOCK_CALLS" && ! -d "$ROOT/transit-dry/$FOLDER" ]]
 echo 'PASS: dry run without POST or transit release folder'
+setup_case srrdb-missing
+if MOCK_SRRDB_MISSING=true run; then exit 1; fi
+grep -Fq 'fehlt: Subs/forced.idx' "$ROOT/transit-srrdb-missing/_logs/"*.log
+[[ ! -e "$MOCK_CALLS" && ! -d "$ROOT/transit-srrdb-missing/$FOLDER" ]]
+echo 'PASS: srrDB names missing subtitle and stops before staging or POST'
 setup_case accepted
 run
 assert_state accepted_unverified

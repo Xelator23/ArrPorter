@@ -80,6 +80,16 @@ docker exec -e sonarr_eventtype=Test Sonarr bash /scripts/arrporter/sonarr/sonar
 3. Für den gewünschten Dienst `RADARR_DRY_RUN=false` oder `SONARR_DRY_RUN=false` in der gemeinsamen Datei setzen. Bei einem neuen Import bedeutet `HTTP 2xx` (Radarr) bzw. `QUEUED` (Sonarr) nur die Annahme der Anfrage. Den tatsächlichen Erfolg in upPollo und qBittorrent prüfen.
 4. Eine MKV ohne Extras darf bei Radarr für snk, WeebPinn und DRiFTKiNG direkt übergeben werden; bei Sonarr zusätzlich für ToonsHub und Pudding-sama. Andere Releases bekommen einen Release-Ordner. Die Namensregel ersetzt keine Gruppenfreigabe.
 
+### srrDB-Abgleich vor der Übergabe
+
+Radarr und Sonarr fragen beim fertigen Import den exakten Release-Namen über die [srrDB-API](https://api.srrdb.com/v1/docs) ab. Der Abgleich läuft auch im Probelauf. Der Verbindungstest in der Oberfläche hat keinen Release-Namen und fragt daher nur upPollo ab.
+
+Bei einem Treffer vergleicht ArrPorter den geplanten Release-Ordner, die relativen Dateipfade einschließlich Groß-/Kleinschreibung und die Dateigrößen für MKV/MP4, NFO und unterstützte Untertitel. Maßgeblich ist der Name im Transit. So darf eine MKV in der Bibliothek weiterhin einen anderen Namen haben. Bei direkter MKV-Übergabe entfällt der Ordnervergleich. Sample, Proof, SFV und die ursprünglichen Archivteile gehören nicht zum Transit. Der Abgleich liest keinen vollständigen Video-Hash.
+
+Für separat archivierte Untertitel liest ArrPorter zusätzlich die zugehörigen Subs-SRR-Metadaten. Fehlt beispielsweise die IDX eines VobSub-Paars, enthält das Joblog den fehlenden Pfad. Anders benannte Dateien erscheinen unter „unerwarteter Name/Pfad“. In beiden Fällen endet der Import-Hook vor dem Anlegen des Video-Transits und vor der Übergabe an upPollo. ArrPorter lädt keine Untertitel nach und korrigiert keine Namen.
+
+Bei „Kein Eintrag“ laufen die lokalen Prüfungen wie bisher weiter. Netzwerkfehler, unlesbare Metadaten und angekündigte Subs ohne auswertbare Dateiliste brechen die Übergabe ab. Prüfe das Joblog, behebe die Ursache und stoße den Import-Hook erneut an. Bereits vorhandene Jobstatus werden weiterhin gegen doppelte Übergaben geschützt.
+
 ## 5. Cleanup separat aktivieren
 
 Lokal `upload_cleanup/settings.conf.example` nach `upload_cleanup/settings.conf` kopieren; Container-Namen und **Hostpfad** der upPollo-Logs setzen. Dann:

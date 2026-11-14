@@ -145,7 +145,14 @@ class PipelineTests(unittest.TestCase):
             with patch.object(s,'lock',lambda p:contextlib.nullcontext()), patch.object(s,'history',return_value=[]), \
                  patch.object(s,'make_plan',return_value=plan), patch.object(s,'check_indexer'), patch.object(s,'filter_plan'), \
                  patch.object(s,'http_json',return_value={'status':'queued'}) as post:
-                s.run(config,event,args)
+                with patch.object(s,'check_srrdb',side_effect=ValueError('srrDB: fehlt: Subs/original.idx')):
+                    with self.assertRaisesRegex(ValueError, 'Subs/original.idx'):
+                        s.run(config,event,args)
+                post.assert_not_called()
+                self.assertFalse(list((root/'transit'/'_state').glob('*.json')))
+                self.assertFalse((root/'transit'/'original.mkv').exists())
+                with patch.object(s,'check_srrdb',return_value='srrDB OK'):
+                    s.run(config,event,args)
                 self.assertTrue((root/'transit'/'original.mkv').samefile(video))
                 self.assertFalse((root/'transit'/'Original Folder').exists())
                 self.assertEqual(post.call_args.args[1]['Path'], str(root/'transit'/'original.mkv'))

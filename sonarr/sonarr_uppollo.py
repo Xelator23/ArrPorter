@@ -16,6 +16,9 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+from srrdb_check import check as check_srrdb
+
 # Only NFO and subtitle sidecars are eligible for Transit. Samples and other
 # scene extras must never be copied or uploaded.
 EXTRA_EXTS = {'.nfo', '.srt', '.vtt', '.idx', '.sub', '.ass', '.ssa', '.sup'}
@@ -511,6 +514,8 @@ def run(config, event, args):
             require(series_root in file.resolve().parents, 'Video liegt außerhalb der Serie')
             require(file.stat().st_size > 0 and file.stat().st_dev == base.stat().st_dev, 'Video leer oder auf anderem Dateisystem')
         require(len({x['relative'] for x in plan['videos'] + extras}) == len(plan['videos'] + extras), 'Namenskollision in Transit')
+        files = {item['relative']: item.get('imported') or item['snapshot'] for item in plan['videos'] + extras}
+        log(check_srrdb(plan['release'], transit_name if kind == 'directory' else None, files))
         plan['extras'] = extras
         write_json(spool / 'plan.json', plan)
         with transit_locks(base, plan):

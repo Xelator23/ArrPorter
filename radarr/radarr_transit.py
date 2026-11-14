@@ -357,6 +357,11 @@ def main():
         s = plan(base, Path(e['RT_BASE']), Path(e['RT_VIDEO']), e['RT_VIDEO_NAME'], e['RT_FOLDER'], e['RT_RELEASE'], e['RT_JOB'], read(e['RADARR_EXTRAS_MANIFEST']), e.get('RT_NFO', ''))
         s['downloadId'] = e['RT_HASH']
         guard(s)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+        from srrdb_check import check
+        files = {item['relative']: item['source'] for item in s['files']}
+        folder = s['transitFolder'] if s['transitKind'] == 'directory' else None
+        print(check(s['release'], folder, files), file=sys.stderr)
         if e['RT_DRY_RUN'] != 'true':
             stage(base, s)
         print(json.dumps(s))
