@@ -27,7 +27,7 @@ LOGS=("$UPPOLLO_LOG_DIR"/upPollo_api_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].
 awk -f "$HERE/uppollo-completions.awk" "${LOGS[@]}" > "$TMP/events"
 docker exec -i "$RADARR_CONTAINER" bash -s -- "$RADARR_SCRIPT_DIR" > "$TMP/states" <<'CONTAINER'
 set -Eeuo pipefail
-source "$1/cleanup.conf"
+source "$1/../../scripts/load-config.sh" "$1" cleanup
 shopt -s nullglob
 files=("$TRANSIT_BASE/_state/"*.json)
 for file in "${files[@]}"; do

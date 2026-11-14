@@ -15,7 +15,7 @@ for app in Radarr Sonarr; do
     if ! docker exec -i "$container" bash -c '
         set -Eeuo pipefail
         set -a
-        source "$1/cleanup.conf"
+        source "$1/../../scripts/load-config.sh" "$1" cleanup
         set +a
         export AUDIT_APP="$2"
         exec python3 -B -

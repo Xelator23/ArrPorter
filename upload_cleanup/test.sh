@@ -11,7 +11,7 @@ for app in radarr sonarr; do
     docker exec -i "$container" bash -s -- "/scripts/arrporter/upload_cleanup/$app" <<'TEST'
 set -Eeuo pipefail
 cd -- "$1"
-source ./cleanup.conf
+source ../../scripts/load-config.sh "$PWD" cleanup
 for key in TRANSIT_BASE QBIT_URL QBIT_USER QBIT_PASS CLIENT_UPLOAD_BASE CLIENT_SPECIAL_BASE; do
     [[ -n ${!key:-} ]] || { printf 'ERROR: Konfigurationsfeld fehlt: %s\n' "$key" >&2; exit 1; }
 done

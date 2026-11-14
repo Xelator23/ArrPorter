@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 077
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-source "${UPPOLLO_CONFIG:-$HERE/uppollo.conf}"
+source "$HERE/../scripts/load-config.sh" "$HERE"
 source "$HERE/filters.conf"
 for cmd in python3 jq; do command -v "$cmd" >/dev/null || { echo "ERROR: $cmd fehlt" >&2; exit 1; }; done
 export SONARR_URL SONARR_API_KEY UPPOLLO_URL API_KEY QBIT_URL QBIT_USER QBIT_PASS TRANSIT_BASE DRY_RUN

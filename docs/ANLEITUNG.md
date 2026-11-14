@@ -27,36 +27,39 @@ cd /mnt/user/appdata/scripts
 git clone https://github.com/Xelator23/ArrPorter.git arrporter
 cd arrporter
 umask 077
+cp -n arrporter.conf.example arrporter.conf
+chmod 600 arrporter.conf
 for app in radarr sonarr; do
-    cp -n "$app/uppollo.conf.example" "$app/uppollo.conf"
     cp -n "$app/filters.conf.example" "$app/filters.conf"
-    chmod 600 "$app/uppollo.conf" "$app/filters.conf"
+    chmod 600 "$app/filters.conf"
 done
 find radarr sonarr upload_cleanup -type f -name '*.sh' -exec chmod 755 {} +
 ```
 
-**Dateibesitzer beachten:** Wenn du als root kopierst, sind Dateien mit Modus 600 für andere Benutzer unlesbar. Setze Besitzer der beiden lokalen Konfigurationsdateien pro App auf die tatsächliche UID/GID des jeweiligen Arr-Dienstes (im Container-Template prüfen). Keine universelle UID voraussetzen. Der manuelle Aufruf als Container-root ersetzt den Test in der Arr-Oberfläche nicht.
+Beide Dienstbenutzer müssen die gemeinsame `arrporter.conf` lesen können. Bei gleicher UID genügt `0600` mit diesem Benutzer als Eigentümer. Bei verschiedenen UIDs verwende eine gemeinsame Gruppe und `0640`. Gib jeder App Leserechte auf ihre eigene Filterdatei. Beide Dienste erhalten Lesezugriff auf die API-Schlüssel in der gemeinsamen Datei. Prüfe die Rechte mit **Test** in beiden Oberflächen.
 
 In beiden Arr-Containern benötigt: Bash, Python 3.10 oder neuer, curl, jq, flock (util-linux), GNU coreutils, find, grep und awk. Auf dem Unraid-Host: Docker-CLI, Bash, jq, awk, flock und GNU date. Auf Debian-basierten Containern lassen sich fehlende Pakete über die Paketverwaltung installieren; für Container-Neuerstellungen ins eigene Image oder dessen dokumentierten Init-Hook übernehmen.
 
 ## 3. Private Konfiguration
 
-Bearbeite **nur die lokalen Kopien** `radarr/uppollo.conf`, `sonarr/uppollo.conf` und die zwei `filters.conf`. Sie sind ausführbare Bash-Konfiguration: Werte in einfache Anführungszeichen setzen, Schreibzugriff beschränken. Alle Adressen mit `.invalid` ersetzen. Zugangsdaten nie in Commits, Screenshots oder Fehlerberichte übernehmen.
+Bearbeite **nur die lokalen Kopien** `arrporter.conf` im Projektstamm und die zwei `filters.conf`. Sie sind ausführbare Bash-Konfiguration: Werte in einfache Anführungszeichen setzen, Schreibzugriff beschränken. Alle Adressen mit `.invalid` ersetzen. Zugangsdaten nie in Commits, Screenshots oder Fehlerberichte übernehmen.
 
 | Einstellung | Wert |
 |---|---|
 | `UPPOLLO_URL` / `API_KEY` | Direkte URL inklusive `/api/upload` und Schlüssel des upPollo-Servers. |
 | `RADARR_URL` / `RADARR_API_KEY` bzw. `SONARR_URL` / `SONARR_API_KEY` | Basisadresse der jeweiligen Arr-API, ohne `/api/v3`; Schlüssel unter Einstellungen → Allgemein. |
 | `QBIT_URL`, `QBIT_USER`, `QBIT_PASS` | Basisadresse ohne abschließenden Slash und qBittorrent-Webzugang. Für Torrent-Quellprüfung und Cleanup. |
-| `TRANSIT_BASE` | Eigener Transit pro App. Bei bestehenden Installationen mit offenen Jobs den bestehenden Pfad behalten. |
+| `RADARR_TRANSIT_BASE` / `SONARR_TRANSIT_BASE` | Eigener Transit pro App. Bei bestehenden Installationen mit offenen Jobs den bestehenden Pfad behalten. |
 | `CLIENT_UPLOAD_BASE` | Tatsächlicher endgültiger Speicherpfad in qBittorrent; für die Arr-Container unter demselben absoluten Pfad sichtbar. |
 | `SPECIAL_GROUP` / `CLIENT_SPECIAL_BASE` | Optional: Gruppe, deren Name auch die qBittorrent-Kategorie ist, und deren Speicherort. Leer lassen für das Standardziel. In qBittorrent den Speicherpfad dieser Kategorie und die Torrent-Verwaltung passend einstellen. |
 | `BLACKHOLE_BASE` (Sonarr) | Oberordner für abgeschlossene Blackhole-Downloads, aus Sicht von Sonarr. Bei diesem Client ist die ursprüngliche Downloadseite nicht verfügbar. |
-| `DRY_RUN` | Zum Start `true`. Erst nach Prüfung auf `false` stellen. |
+| `RADARR_DRY_RUN` / `SONARR_DRY_RUN` | Zum Start `true`. Erst nach Prüfung auf `false` stellen. |
 
 Beispiel-Filter: `EXCLUDED_GROUPS=('FuN' 'FUN-Low')` sperrt **beide** Endungen unabhängig von der Schreibweise. Kein führender Bindestrich; `FuN` allein sperrt `-FUN-Low` nicht. Persönliche Gruppen, die der Encoder separat übergibt, hier ergänzen. Weitere Optionen: gesperrte Quellen (`EXCLUDED_INDEXERS`), NFO-Pflicht je Gruppe, erlaubte Auflösungen und gesperrte Tags. Mindestens eine ausdrücklich erlaubte Auflösung muss erkannt werden. Eigene Filter vor dem Livebetrieb prüfen.
 
 ## 4. Arr-Verbindungen und erster Import
+
+Dienstanleitungen mit den genauen Schritten und erwarteten Ergebnissen findest du unter [Radarr einrichten](RADARR.md) und [Sonarr einrichten](SONARR.md).
 
 Unter **Einstellungen → Connect/Verbindungen → Custom Script** einrichten:
 
@@ -72,9 +75,9 @@ docker exec -e radarr_eventtype=Test Radarr bash /scripts/arrporter/radarr/radar
 docker exec -e sonarr_eventtype=Test Sonarr bash /scripts/arrporter/sonarr/sonarr-uppollo.sh
 ```
 
-1. Mit `DRY_RUN=true` ein Release importieren. Unter `TRANSIT_BASE/_logs/` nach `DRY RUN OK`, `SKIP` oder einer Fehlerursache sehen. Es erfolgt kein Upload. **Radarr ersetzt beim Import vorhandene Release-NFOs durch die aktuellen; ist die Quelle nachweislich NFO-frei, werden alte NFOs aus dem Filmordner entfernt.** Keine separat generierten oder handgepflegten NFOs mit dieser Funktion mischen. Sonarr speichert Event- und Extras-Kopien auch im Probelauf.
+1. Mit aktiviertem Probelauf ein Release importieren. Unter `TRANSIT_BASE/_logs/` nach `DRY RUN OK`, `SKIP` oder einer Fehlerursache sehen. Es erfolgt kein Upload. **Radarr ersetzt beim Import vorhandene Release-NFOs durch die aktuellen; ist die Quelle nachweislich NFO-frei, werden alte NFOs aus dem Filmordner entfernt.** Keine separat generierten oder handgepflegten NFOs mit dieser Funktion mischen. Sonarr speichert Event- und Extras-Kopien auch im Probelauf.
 2. Release-Name, Anzahl, Extras und Ziel prüfen. In Sonarr ist erst die Sammelmeldung für ein Staffelpack maßgeblich. Kein aktuelles Extra aus einem alten Bibliotheksrelease hinzumischen.
-3. In der gewünschten App `DRY_RUN=false` setzen. Bei einem neuen Import bedeutet `HTTP 2xx` (Radarr) bzw. `QUEUED` (Sonarr) nur die Annahme der Anfrage. Den tatsächlichen Erfolg in upPollo und qBittorrent prüfen.
+3. Für den gewünschten Dienst `RADARR_DRY_RUN=false` oder `SONARR_DRY_RUN=false` in der gemeinsamen Datei setzen. Bei einem neuen Import bedeutet `HTTP 2xx` (Radarr) bzw. `QUEUED` (Sonarr) nur die Annahme der Anfrage. Den tatsächlichen Erfolg in upPollo und qBittorrent prüfen.
 4. Eine MKV ohne Extras darf bei Radarr für snk, WeebPinn und DRiFTKiNG direkt übergeben werden; bei Sonarr zusätzlich für ToonsHub und Pudding-sama. Andere Releases bekommen einen Release-Ordner. Die Namensregel ersetzt keine Gruppenfreigabe.
 
 ## 5. Cleanup separat aktivieren
@@ -87,7 +90,7 @@ bash setup.sh
 bash cleanup.sh --check
 ```
 
-Setup übernimmt nur die für den Cleanup erforderlichen Werte aus den beiden Importkonfigurationen in `radarr/cleanup.conf` und `sonarr/cleanup.conf` unterhalb des Cleanup-Ordners. Bereits vorhandene Dateien werden nicht überschrieben. Nach Passwort-, Transit- oder Zieländerungen diese privaten Kopien ebenfalls aktualisieren. Sobald die erste Statusdatei pro App existiert, kann `bash test.sh` die Tests in den tatsächlichen Containern ausführen.
+Der Cleanup liest den qBittorrent-Zugang und die passenden Transit- und Zielpfade bei jedem Aufruf aus der gemeinsamen `arrporter.conf`. Damit gilt eine Passwortänderung auch für den nächsten Cleanup. Die Datei `upload_cleanup/settings.conf` enthält ausschließlich Host-Einstellungen für den Zeitplaner (Containernamen und Logverzeichnis). Sobald die erste Statusdatei pro App existiert, kann `bash test.sh` die Tests in den tatsächlichen Containern ausführen.
 
 Bei `CHECK OK` sind die geprüften Zielinhalte mit dem Transit abgeglichen. `PENDING` bedeutet: noch kein eindeutiger Abschluss. Große Uploads brauchen Zeit; es gibt keine pauschale Löschfrist. Mehrdeutige Logsequenzen, fehlende Ziele oder ein Torrent, der noch den Transit verwendet, stoppen die Bereinigung. Ein eindeutig abgelehntes Duplikat wird separat geprüft. Bei plausibler Check-Ausgabe denselben Aufruf mit `--apply` ausführen. Für Unraid **User Scripts**:
 
@@ -106,7 +109,7 @@ Als Custom-Zeitplan `*/10 * * * *` eintragen. Nur **einen** Cleanup für dieselb
 | Quelle verschwunden, Extras unbekannt | Prüfen, ob Grab, Upgrade und Einzelimport aktiviert waren. Sonarr: Bei vorhandenem gespeicherten Event zunächst nur einen Replay mit `--dry-run` ausführen. |
 | Sonarr-Staffel unvollständig | History und erwartete Episoden derselben Download-ID vergleichen. Bei Blackhole muss die Staffelliste zum Pack passen. Nicht mehrere Download-IDs zusammenführen. |
 | Ziel existiert, Timeout oder Status unklar | Nicht erneut senden oder Dateien löschen. Erst upPollo-Tageslog, Tracker und qBittorrent prüfen. `bash cleanup.sh --diagnose` liest lokale Statusdateien und Torrent-Zuordnungen. Diagnoseausgaben enthalten lokale Pfade und Release-Namen. |
-| qBittorrent zeigt andere Kategorie/anderen Pfad | Tatsächlichen Speicherpfad und Automatik in qBittorrent prüfen; Container-Mounts und beide Konfigurationskopien vergleichen. |
+| qBittorrent zeigt andere Kategorie/anderen Pfad | Tatsächlichen Speicherpfad und Automatik in qBittorrent prüfen; Container-Mounts und die Zielpfade in der gemeinsamen Konfiguration vergleichen. |
 | Permission denied / Hardlink schlägt fehl | Ausführungsrecht des Hooks, Leserechte auf Konfiguration, UID/GID, Schreibrechte und gemeinsames Dateisystem prüfen. |
 
 Beispiel für einen **Sonarr**-Replay: `EVENT` durch den tatsächlichen Containerpfad unter `TRANSIT_BASE/_events/<job>/latest-event.json` ersetzen:
@@ -121,6 +124,24 @@ docker exec Sonarr bash /scripts/arrporter/sonarr/sonarr-uppollo.sh --replay "$E
 
 ## 7. Updates und bestehende Installationen
 
-Bei Neuinstallationen per Git: lokalen Konfigurations- und Statusbestand sichern, `git pull --ff-only` ausführen, neue Beispielwerte mit lokaler Konfiguration vergleichen und Verbindungstests wiederholen. Lokale Konfigurationen, Logs und Schlüssel sind ignoriert. Keine Live-Konfiguration mit `git add -f` veröffentlichen.
+Bei einem vorhandenen Git-Checkout auf dem Unraid-Host zuerst private Konfigurationen sichern. Aktualisiere dann die Skripte und führe die Migration aus dem Projektordner aus. **Beim Umstieg keine leere `arrporter.conf` aus der Vorlage anlegen.**
 
-Bei einer bestehenden Installation den neuen Ordner **parallel** anlegen, ohne eine zweite Live-Verbindung oder einen zweiten Cleanup zu aktivieren. Die bisherige Sperrliste, bisherigen Transitbasen und Zielpfade lokal übernehmen. Früher gruppenspezifisch benannte Zielvariablen durch `SPECIAL_GROUP` und `CLIENT_SPECIAL_BASE` ersetzen, auch für ältere offene Jobs. In einem ruhigen Zeitfenster die **vorhandenen** Arr-Verbindungen auf die neuen Skriptpfade umstellen. Nur nach bestandenem Test den bestehenden User-Scripts-Aufruf umstellen. Die Rückkehr erfolgt durch Zurückstellen dieser Pfade; nicht die Transit- oder Statusordner leeren.
+```bash
+cd /mnt/user/appdata/scripts/arrporter
+git pull --ff-only
+bash scripts/migrate-config.sh
+```
+
+Der Befehl erwartet die bisherigen Dateien `radarr/uppollo.conf` und `sonarr/uppollo.conf` im Projekt. Liegen sie noch an den früheren Unraid-Pfaden, verwende stattdessen:
+
+```bash
+bash scripts/migrate-config.sh /mnt/user/appdata/scripts/radarr/new/uppollo.conf /mnt/user/appdata/scripts/sonarr/uppollo.conf
+cp -n /mnt/user/appdata/scripts/radarr/new/filters.conf radarr/filters.conf
+cp -n /mnt/user/appdata/scripts/sonarr/filters.conf sonarr/filters.conf
+```
+
+Beide Eingabedateien sind vertrauenswürdige Bash-Dateien. Die Migration legt `arrporter.conf` mit Modus `0600` neu an und übernimmt die vorhandenen Transitpfade und Probelauf-Schalter. Unterscheiden sich gemeinsame Werte, meldet sie den Feldnamen ohne seinen Inhalt. Entscheide lokal, welcher Wert für beide gelten soll, oder fülle die gemeinsame Vorlage von Hand aus. Prüfe individuell ergänzte Einstellungen separat, insbesondere früher gruppenspezifisch benannte Zielvariablen. Für solche Ziele heißen die aktuellen Felder `SPECIAL_GROUP` und `CLIENT_SPECIAL_BASE`. Ein bisher explizit konfigurierter Radarr-Filterpfad wird als `RADARR_FILTER_CONFIG` übernommen. Kontrolliere diesen Pfad aus Sicht des Dienstes. Bestehende Filterdateien im Zielverzeichnis behalten durch `cp -n` Vorrang.
+
+Gib beiden Diensten Leserechte wie in Abschnitt 2. Stelle die **vorhandenen** Custom-Script-Verbindungen auf die neuen Skripte um und drücke jeweils **Test**. Ohne `arrporter.conf` funktionieren im Projektlayout weiter die bisherigen dienstlokalen Konfigurationen. Ein ausdrücklich gesetztes `UPPOLLO_CONFIG` wählt beim Import weiterhin eine dienstlokale Datei aus. Entferne diesen Override, wenn die gemeinsame Konfiguration gelten soll.
+
+Vergleiche beim bisherigen Cleanup besonders Transitbasis und Seeding-Ziel mit der neuen Datei, bevor du den Zeitplan umstellst. Führe `bash upload_cleanup/setup.sh` und `bash upload_cleanup/cleanup.sh --check` aus. Nur einen Zeitplan für dieselben Jobs aktivieren. Für einen Rückwechsel die vorherigen Hook- und Cleanup-Pfade wieder eintragen. Transit und Statusdateien werden für die Migration weiterverwendet.

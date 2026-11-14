@@ -3,15 +3,12 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-CONFIG=${UPPOLLO_CONFIG:-"$SCRIPT_DIR/uppollo.conf"}
 MODE=${1:-run}
 case "$MODE" in run|--check|--dry-run) ;; *) echo 'Usage: radarr-uppollo.sh [--check|--dry-run]' >&2; exit 2;; esac
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 skip() { log "SKIP: $*"; exit 0; }
-[[ -r "$CONFIG" ]] || die "Konfiguration fehlt: $CONFIG"
-# Configuration files are trusted shell code; keep them writable only by the owner.
-source "$CONFIG"
+source "$SCRIPT_DIR/../scripts/load-config.sh" "$SCRIPT_DIR"
 export SPECIAL_GROUP
 source "${FILTER_CONFIG:-$SCRIPT_DIR/filters.conf}"
 for cmd in python3 curl jq flock realpath sha256sum stat find sort ln mktemp; do

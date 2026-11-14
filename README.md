@@ -11,8 +11,10 @@
 | Staffelpack | Einzelmeldungen sammeln, Vollständigkeit prüfen und das Pack einmal übergeben. Echte Episoden-Unterordner bleiben erhalten; eine doppelte identische äußere Ordnerebene wird normalisiert. |
 | Optionaler Cleanup für Unraid | Prüft Tageslogs, Jobstatus und qBittorrent vor der Bereinigung. Bei unklarem Ergebnis bleibt der Transit erhalten. Das mitgelieferte Hostskript ruft die Prüfungen per `docker exec` in den Arr-Containern auf. |
 
-**[Installation und Betrieb Schritt für Schritt →](docs/ANLEITUNG.md)** · [Beispiel: Radarr](radarr/uppollo.conf.example) · [Beispiel: Sonarr](sonarr/uppollo.conf.example) · [Cleanup-Einstellungen](upload_cleanup/settings.conf.example)
+**[Gemeinsame Konfiguration und Migration](docs/ANLEITUNG.md)** · [Radarr einrichten](docs/RADARR.md) · [Sonarr einrichten](docs/SONARR.md) · [Konfigurationsvorlage](arrporter.conf.example)
 
-Es sind keine Zugangsdaten oder Produktionskonfigurationen enthalten. Die Beispiele starten mit `DRY_RUN=true`. Der Radarr-Extras-Import und die Sonarr-Extras-Sicherung arbeiten auch im Probelauf. Für den ersten Test ein entbehrliches Release verwenden.
+Adressen und Zugangsdaten stehen einmal in der privaten `arrporter.conf`. Jeder Dienst hat seine eigene `filters.conf`, seinen Transitpfad und seinen eigenen Schalter für den Probelauf.
+
+Es sind keine Zugangsdaten oder Produktionskonfigurationen enthalten. Beide Dienste starten in der Vorlage im Probelauf. Der Radarr-Extras-Import und die Sonarr-Extras-Sicherung arbeiten auch im Probelauf. Für den ersten Test ein entbehrliches Release verwenden.
 
 ArrPorter ist eigenständig. Die Installation von upPollo, Tracker, Indexer und Download-Clients gehört nicht zum Paket.

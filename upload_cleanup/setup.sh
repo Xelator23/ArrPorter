@@ -27,6 +27,17 @@ for app in radarr sonarr; do
     [[ -d "$dir" && ! -L "$dir" ]]
     docker exec "$container" test -f /scripts/arrporter/upload_cleanup/setup.sh
     docker exec "$container" test -f "/scripts/arrporter/upload_cleanup/$app/cleanup-confirmed.sh"
+    if [[ -e "$HERE/../arrporter.conf" || -L "$HERE/../arrporter.conf" ]]; then
+        docker exec "$container" bash -ec '
+            test -r /scripts/arrporter/arrporter.conf
+            source /scripts/arrporter/scripts/load-config.sh "/scripts/arrporter/upload_cleanup/$1" cleanup
+            for key in TRANSIT_BASE QBIT_URL QBIT_USER QBIT_PASS; do
+                [[ -n ${!key:-} ]] || { echo "ERROR: Konfigurationsfeld fehlt: $key" >&2; exit 1; }
+            done
+        ' bash "$app"
+        printf '%s: gemeinsame arrporter.conf für den Cleanup geprüft.\n' "$app"
+        continue
+    fi
     config="$dir/cleanup.conf"
     if [[ -e "$config" || -L "$config" ]]; then
         [[ -f "$config" && ! -L "$config" ]] || { echo 'ERROR: Unsichere Konfigurationsdatei.' >&2; exit 1; }
@@ -61,5 +72,5 @@ EXPORT_CONFIG
     tmp=''
     printf '%s: eigene Cleanup-Konfiguration angelegt; Zugangsdaten nicht ausgegeben.\n' "$app"
 done
-echo 'SETUP OK: Cleanup arbeitet ausschließlich aus /scripts/arrporter/upload_cleanup.'
+echo 'SETUP OK: Cleanup-Konfiguration für beide Dienste geprüft.'
 echo 'Importskripte, Mediendateien und vorhandene Statusdateien wurden nicht verändert.'

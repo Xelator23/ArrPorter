@@ -14,7 +14,7 @@ for app in Radarr Sonarr; do
     if ! docker exec "$container" bash -c '
         set -Eeuo pipefail
         set -a
-        source "/scripts/arrporter/upload_cleanup/$1/cleanup.conf"
+        source /scripts/arrporter/scripts/load-config.sh "/scripts/arrporter/upload_cleanup/$1" cleanup
         set +a
         exec python3 -B /scripts/arrporter/upload_cleanup/reconcile.py "$2" "$3"
     ' bash "$subdir" "$app" "$MODE"; then
