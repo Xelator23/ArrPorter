@@ -39,3 +39,25 @@ echo 'QBIT_PASS=rotated-test' >> arrporter.conf
 echo 'SONARR_TRANSIT_BASE=/transit/radarr/nested' >> arrporter.conf
 if (source "$loader" "$PWD/sonarr"); then exit 1; fi
 echo 'PASS: Migration, Konflikte, Alt-Konfiguration, Dienstzuordnung und gemeinsame Cleanup-Zugangsdaten.'
+
+# Exercise the shared legacy layout in a second checkout.
+mkdir -p shared-install/scripts legacy/common
+cp scripts/{migrate-config,select-service}.sh shared-install/scripts/
+cat >legacy/common/uppollo.conf <<'COMMON'
+API_KEY='test key with $ and spaces'
+TRANSIT_BASE=/old/transit
+RADARR_TRANSIT_BASE="$TRANSIT_BASE/movies"
+SONARR_TRANSIT_BASE="$TRANSIT_BASE/series"
+CLIENT_XELAVIE_BASE='/old/custom target'
+DRY_RUN=false
+COMMON
+bash shared-install/scripts/migrate-config.sh --common legacy/common/uppollo.conf /old/blackhole
+(
+    source shared-install/arrporter.conf
+    [[ "$API_KEY" == 'test key with $ and spaces' ]]
+    [[ "$RADARR_TRANSIT_BASE" == /old/transit/movies && "$SONARR_TRANSIT_BASE" == /old/transit/series ]]
+    [[ "$RADARR_DRY_RUN" == false && "$SONARR_DRY_RUN" == false ]]
+    [[ "$SPECIAL_GROUP" == Xelavie && "$CLIENT_SPECIAL_BASE" == '/old/custom target' ]]
+    [[ "$BLACKHOLE_BASE" == /old/blackhole ]]
+)
+echo 'PASS: Gemeinsame Altdatei einschließlich Sonderziel und dienstbezogener Transitpfade übernommen.'

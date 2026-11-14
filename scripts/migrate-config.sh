@@ -5,8 +5,14 @@ shopt -s inherit_errexit
 set +x
 umask 077
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
-if [[ $# != 0 && $# != 2 ]]; then
-    echo 'Usage: bash scripts/migrate-config.sh [radarr/uppollo.conf sonarr/uppollo.conf]' >&2
+common_source=''
+blackhole_default=''
+if [[ ${1:-} == --common && ( $# == 2 || $# == 3 ) && -f ${2:-} ]]; then
+    common_source=$(realpath -e -- "$2")
+    blackhole_default=${3:-}
+    set -- "$common_source" "$common_source"
+elif [[ ( $# != 0 && $# != 2 ) || ${1:-} == --common ]]; then
+    echo 'Usage: bash scripts/migrate-config.sh [radarr/uppollo.conf sonarr/uppollo.conf | --common common/uppollo.conf [blackhole-base]]' >&2
     exit 2
 fi
 dest="$root/arrporter.conf"
@@ -21,7 +27,27 @@ read_settings() (
     shift 2
     SCRIPT_DIR=$(cd -- "$(dirname -- "$file")" && pwd)
     HERE=$SCRIPT_DIR
+    COMMON_DIR=$SCRIPT_DIR
     source "$file" >/dev/null
+    if [[ -n "$common_source" ]]; then
+        if [[ "$app" == radarr ]]; then
+            TRANSIT_BASE=${RADARR_TRANSIT_BASE:?RADARR_TRANSIT_BASE fehlt}
+            DRY_RUN=${RADARR_DRY_RUN:-${DRY_RUN:-true}}
+        else
+            TRANSIT_BASE=${SONARR_TRANSIT_BASE:?SONARR_TRANSIT_BASE fehlt}
+            DRY_RUN=${SONARR_DRY_RUN:-${DRY_RUN:-true}}
+            BLACKHOLE_BASE=${BLACKHOLE_BASE:-$blackhole_default}
+        fi
+        if [[ -n ${CLIENT_XELAVIE_BASE:-} ]]; then
+            if [[ ${SPECIAL_GROUP:-Xelavie} != Xelavie || ${CLIENT_SPECIAL_BASE:-$CLIENT_XELAVIE_BASE} != "$CLIENT_XELAVIE_BASE" ]]; then
+                echo 'ERROR: Widersprüchliche Sondergruppe oder Zielpfade.' >&2
+                exit 1
+            fi
+            SPECIAL_GROUP=Xelavie
+            CLIENT_SPECIAL_BASE=$CLIENT_XELAVIE_BASE
+        fi
+        unset CLIENT_XELAVIE_BASE
+    fi
     for key in ${!CLIENT_@}; do
         if [[ "$key" == CLIENT_*_BASE && "$key" != CLIENT_UPLOAD_BASE && "$key" != CLIENT_SPECIAL_BASE ]]; then
             printf 'ERROR: Bitte %s zuerst auf SPECIAL_GROUP und CLIENT_SPECIAL_BASE umstellen.\n' "$key" >&2

@@ -134,6 +134,14 @@ docker exec Sonarr bash /scripts/arrporter/sonarr/sonarr-uppollo.sh --replay "$E
 
 ## 7. Updates und bestehende Installationen
 
+**Installation mit `uppollo/common`.** Führe im neuen ArrPorter-Checkout auf dem Host folgenden Befehl für die bisherige gemeinsame Datei aus:
+
+```bash
+bash scripts/migrate-config.sh --common ../uppollo/common/uppollo.conf
+```
+
+Ein optionaler letzter Parameter setzt den bisherigen Sonarr-Blackhole-Ordner aus Containersicht, wenn das Feld in der Quelldatei fehlt. Die Migration verwendet die beiden dienstspezifischen Transitpfade und übernimmt den bisherigen Probelauf für beide Dienste. Bei vorhandenem `CLIENT_XELAVIE_BASE` schreibt sie die Kategorie und ihren bisherigen Zielpfad in die neuen Felder. Kopiere die aktive Filterdatei jedes Dienstes in `radarr/filters.conf` bzw. `sonarr/filters.conf`. Nutzt auch Sonarr den gemeinsamen Filter, dient dieselbe Quelle für beide Kopien. Übernimm die Host-Einstellungen des aktiven Cleanups nach `upload_cleanup/settings.conf`. Die Zuordnung von Eigentümern und Leserechten sowie den Test der Hooks beschreibt Abschnitt 2 bzw. 4.
+
 Bei einem vorhandenen Git-Checkout auf dem Unraid-Host zuerst private Konfigurationen sichern. Aktualisiere dann die Skripte und führe die Migration aus dem Projektordner aus. **Beim Umstieg keine leere `arrporter.conf` aus der Vorlage anlegen.**
 
 ```bash
