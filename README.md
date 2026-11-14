@@ -1,4 +1,4 @@
-![ArrPorter – zwei Importwege, eine Übergabe](assets/arrporter.svg)
+![ArrPorter im Xelavie-Stil – Radarr · Sonarr → upPollo](assets/arrporter-xelavie.png)
 
 # ArrPorter
 
