@@ -68,6 +68,14 @@ def file_crc(path):
     return checksum
 
 
+def usable_nfo(data):
+    text = data.decode('utf-8', errors='replace')
+    media_dump = (re.search(r'^(General|Allgemein)\s*$', text, re.M | re.I)
+                  and re.search(r'^[A-Za-z ]+ {10,}:', text, re.M)
+                  and not re.search(r'imdb\.com|themoviedb\.org|director|handlung', text, re.I))
+    return bool(text.strip()) and not media_dump
+
+
 def store_nfo(path, data):
     """Publish verified bytes at a staging path without modifying existing hardlinks."""
     stream = tempfile.NamedTemporaryFile(dir=path.parent, delete=False)
@@ -175,19 +183,29 @@ def reference(release, read):
     return expected
 
 
-def check(release, folder, files, read=None):
+def check(release, folder, files, read=None, *, direct_candidate=False):
     """files maps final transit-relative names to local files; folder is None for direct MKVs."""
     read = read or fetch
     expected = reference(release, read)
     if expected is None:
         return f'srrDB: Kein Eintrag für {release}. Übergabe mit lokalen Prüfungen.', {}
     actual = {relative(name): Path(source) for name, source in files.items()}
+    if direct_candidate and not any(path.suffix.lower() == '.nfo' for path in expected):
+        folder = None
+        actual = {PurePosixPath(path.name): source for path, source in actual.items()}
     problems = []
-    mismatched_nfos = {}
+    requested_nfos = {}
     if folder is not None and folder != release:
         problems.append(f'Release-Ordner erwartet {release!r}, geplant {folder!r}')
     for path in sorted(expected.keys() - actual.keys()):
-        problems.append(f'fehlt: {path}')
+        if path.suffix.lower() != '.nfo':
+            problems.append(f'fehlt: {path}')
+        elif expected[path] is None:
+            problems.append(f'CRC32-Referenz fehlt: {path}')
+        elif any(p.startswith('.') for p in path.parts) or any(p in expected for p in path.parents) or any(path in p.parents for p in expected):
+            problems.append(f'Unsicherer oder kollidierender NFO-Pfad: {path}')
+        else:
+            requested_nfos[path] = None
     for path in sorted(actual.keys() - expected.keys()):
         problems.append(f'unerwarteter Name/Pfad: {path}')
     for path in sorted(expected.keys() & actual.keys()):
@@ -197,14 +215,14 @@ def check(release, folder, files, read=None):
         checksum = file_crc(actual[path])
         if checksum != expected[path]:
             if path.suffix.lower() == '.nfo':
-                mismatched_nfos[path] = checksum
+                requested_nfos[path] = checksum
             else:
                 problems.append(f'CRC32 weicht ab: {path} (srrDB {expected[path]:08X}, lokal {checksum:08X})')
     if problems:
         raise ValueError('srrDB: ' + '; '.join(problems) + '. Keine Übergabe an upPollo.')
     replacements = {}
     messages = []
-    for path, local_crc in mismatched_nfos.items():
+    for path, local_crc in requested_nfos.items():
         url = f'https://www.srrdb.com/download/file/{quote(release, safe="")}/{quote(path.as_posix())}'
         try:
             data = read(url)
@@ -215,6 +233,7 @@ def check(release, folder, files, read=None):
             raise ValueError(f'srrDB: CRC32 der geladenen NFO weicht ab: {path} '
                              f'(srrDB {expected[path]:08X}, Download {crc:08X}). Keine Übergabe an upPollo.')
         replacements[path.as_posix()] = data
-        messages.append(f'srrDB: Original-NFO geladen und geprüft: {path} (lokal {local_crc:08X}, Original {crc:08X}).')
+        local = 'lokal fehlend' if local_crc is None else f'lokal {local_crc:08X}'
+        messages.append(f'srrDB: Original-NFO geladen und geprüft: {path} ({local}, Original {crc:08X}).')
     messages.append(f'srrDB OK: {release}, {len(expected)} Dateinamen, Pfade und CRC32-Prüfsummen stimmen überein.')
     return '\n'.join(messages), replacements

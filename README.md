@@ -20,7 +20,7 @@ Radarr und Sonarr fragen beim Import den exakten Release-Namen bei srrDB ab. Gib
 | Meldung im Joblog | Was beim Import passiert |
 |---|---|
 | `srrDB OK` | Namen, Pfade und Prüfsummen stimmen. Der Import-Hook fährt fort. |
-| `Original-NFO geladen und geprüft` | Eine vorhandene NFO hat unter dem erwarteten Namen eine andere CRC32. ArrPorter lädt die Original-NFO dieses Releases von srrDB und verwendet sie nach erfolgreicher CRC32-Prüfung. |
+| `Original-NFO geladen und geprüft` | Eine bei srrDB gelistete NFO fehlt im Download oder hat eine andere CRC32. ArrPorter lädt sie für genau dieses Release und übernimmt sie unter ihrem Originalnamen, sobald die CRC32 stimmt. |
 | `fehlt`, `unerwarteter Name/Pfad` oder `CRC32 weicht ab` | ArrPorter stoppt vor der Übergabe an upPollo. Das Log nennt die betroffene Datei und bei einem CRC32-Fehler beide Prüfwerte. |
 | `Kein Eintrag` | Das Release wird mit den lokalen Prüfungen weiterverarbeitet. Das gilt auch für P2P-Releases ohne srrDB-Eintrag. |
 

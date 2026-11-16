@@ -180,8 +180,12 @@ if [[ -n "$NFO" && -s "$NFO" ]]; then
        grep -qE '^[A-Za-z ]+[ ]{10,}:' "$NFO" &&
        ! grep -qiE 'imdb\.com|themoviedb\.org|director|handlung' "$NFO"; then VALID_NFO=false; fi
 fi
+export RT_REQUIRED_NFO_GROUP=''
 for group in "${NFO_REQUIRED_GROUPS[@]}"; do
-    if [[ "$UPPER" == *"-${group^^}" && "$VALID_NFO" != true ]]; then filter_skip "Keine eindeutige, brauchbare NFO für $group"; fi
+    if [[ "$UPPER" == *"-${group^^}" && "$VALID_NFO" != true ]]; then
+        (( ${#NFOS[@]} == 0 )) || filter_skip "Keine eindeutige, brauchbare NFO für $group"
+        RT_REQUIRED_NFO_GROUP=$group
+    fi
 done
 IMDB=${radarr_movie_imdbid:-}
 TMDB=${radarr_movie_tmdbid:-0}
@@ -211,6 +215,8 @@ export RT_FOLDER="$TRANSIT_FOLDER" RT_RELEASE="$RELEASE" RT_JOB="$JOB" RT_HASH="
 export RT_DRY_RUN="$DRY_RUN" RT_NFO=''
 [[ "$VALID_NFO" != true ]] || export RT_NFO="$NFO"
 python3 -B "$SCRIPT_DIR/radarr_transit.py" prepare > "$TMP/plan.json"
+if jq -e '.skip' "$TMP/plan.json" >/dev/null; then filter_skip "$(jq -r .skip "$TMP/plan.json")"; fi
+VALID_NFO=$(jq -r 'any(.files[]; .relative | ascii_downcase | endswith(".nfo"))' "$TMP/plan.json")
 DEST=$(jq -er .path "$TMP/plan.json")
 log "Prüfung OK: Release=$RELEASE; Video=$VIDEO; Kategorie=$CATEGORY; NFO=$VALID_NFO"
 log "Transit: $(jq -r .transitKind "$TMP/plan.json"); Pfad=$DEST"

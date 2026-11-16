@@ -360,29 +360,45 @@ def main():
         manifest = read(e['RADARR_EXTRAS_MANIFEST'])
         s = plan(base, movie, Path(e['RT_VIDEO']), e['RT_VIDEO_NAME'], e['RT_FOLDER'], e['RT_RELEASE'], e['RT_JOB'], manifest, e.get('RT_NFO', ''), preview)
         s['downloadId'] = e['RT_HASH']
-        guard(s)
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-        from srrdb_check import check, store_nfo
+        from srrdb_check import check, store_nfo, usable_nfo
         files = {item['relative']: item['source'] for item in s['files']}
-        folder = s['transitFolder'] if s['transitKind'] == 'directory' else None
-        report, replacements = check(s['release'], folder, files)
+        report, replacements = check(s['release'], s['transitFolder'], files, direct_candidate=s['transitKind'] == 'file')
         print(report, file=sys.stderr)
-        for item in s['files']:
-            if item['relative'] in replacements:
-                data = replacements[item['relative']]
-                imdb_ids = set(re.findall(rb'tt[0-9]{7,10}', data, re.I))
-                imdb = e.get('radarr_movie_imdbid', '')
-                require(not imdb_ids or not imdb or imdb_ids == {imdb.encode()}, 'Original-NFO-IMDb widerspricht Radarr')
-                item['sha256'] = hashlib.sha256(data).hexdigest()
-                item['size'] = len(data)
-                if e['RT_DRY_RUN'] != 'true':
-                    store_nfo(exact(item['source'], True), data)
-                    if not preview:
-                        for entry in manifest['files']:
-                            if entry['path'] == item['source']:
-                                entry['sha256'] = item['sha256']
-                        write(Path(e['RADARR_EXTRAS_MANIFEST']), manifest)
+        group = e.get('RT_REQUIRED_NFO_GROUP')
+        if group and not any(usable_nfo(data) for data in replacements.values()):
+            print(json.dumps({'skip': f'Keine brauchbare NFO für {group}'}))
+            return
+        items = {item['relative']: item for item in s['files']}
+        for rel, data in replacements.items():
+            imdb_ids = set(re.findall(rb'tt[0-9]{7,10}', data, re.I))
+            imdb = e.get('radarr_movie_imdbid', '')
+            require(not imdb_ids or not imdb or imdb_ids == {imdb.encode()}, 'Original-NFO-IMDb widerspricht Radarr')
+            if rel not in items:
+                root = Path(preview) if preview else movie
+                src = contained(root / safe_rel(rel), root)
+                require(not src.exists(), f'Konflikt mit vorhandener Datei: {src}')
+                item = dict(relative=rel, source=str(src), kind='extra')
+                s['files'].append(item)
+                items[rel] = item
+            items[rel].update(size=len(data), sha256=hashlib.sha256(data).hexdigest())
+        if replacements and s['transitKind'] == 'file':
+            s.update(transitKind='directory', path=str(base / s['transitFolder']))
+            dest = exact(s['path'])
+            require(not dest.exists(), f'Transit existiert bereits: {dest}')
+        guard(s)
         if e['RT_DRY_RUN'] != 'true':
+            for rel, data in replacements.items():
+                src = exact(items[rel]['source'])
+                src.parent.mkdir(parents=True, exist_ok=True)
+                store_nfo(src, data)
+            if replacements and not preview:
+                entries = {entry['path']: entry for entry in manifest['files']}
+                for rel in replacements:
+                    item = items[rel]
+                    entries[item['source']] = dict(path=item['source'], sha256=item['sha256'])
+                manifest['files'] = list(entries.values())
+                write(Path(e['RADARR_EXTRAS_MANIFEST']), manifest)
             if preview:
                 from radarr_extras import sync
                 with contextlib.redirect_stdout(sys.stderr):

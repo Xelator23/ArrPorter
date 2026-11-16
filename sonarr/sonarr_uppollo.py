@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.error
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from srrdb_check import check as check_srrdb, store_nfo
+from srrdb_check import check as check_srrdb, store_nfo, usable_nfo
 
 # Only NFO and subtitle sidecars are eligible for Transit. Samples and other
 # scene extras must never be copied or uploaded.
@@ -98,13 +98,16 @@ def make_plan(event, records, expected_episode_ids=None):
             'releaseType': event.get('sonarr_release_releasetype', ''),
             'episodeIds': sorted(actual), 'videos': videos}
 
-def select_transit_layout(plan, extras):
+def direct_mkv(plan, extras):
     # Match the complete release-group suffix, independently of letter case.
     title = plan.get('release', '').casefold()
     allowed = ('snk', 'weebpinn', 'driftking', 'toonshub', 'pudding-sama')
-    single = (any(len(title) > len(g) + 1 and title.endswith('-' + g) for g in allowed)
+    return (any(len(title) > len(g) + 1 and title.endswith('-' + g) for g in allowed)
               and len(plan['videos']) == 1 and not extras
               and PurePosixPath(plan['videos'][0]['relative']).suffix.lower() == '.mkv')
+
+def select_transit_layout(plan, extras):
+    single = direct_mkv(plan, extras)
     plan['transitKind'] = 'file' if single else 'directory'
     plan['transitName'] = safe_part(PurePosixPath(plan['videos'][0]['relative']).name
                                     if single else plan['transitFolder'])
@@ -170,7 +173,7 @@ def collapse_duplicate_folders(plan, extras):
         item['relative'] = str(path)
     return changed
 
-def filter_plan(plan, event, filters, extras):
+def filter_plan(plan, event, filters, extras=None):
     texts = [event.get('sonarr_release_quality', '') + ' ' + plan['release']]
     qualities = event.get('sonarr_episodefile_qualities', '').split('|')
     paths = event.get('sonarr_episodefile_paths', '').split('|')
@@ -192,6 +195,13 @@ def filter_plan(plan, event, filters, extras):
         kind, name = row[:2]
         if kind == 'group':
             require(not any(n.upper().endswith('-' + name.upper()) for n in names), f'FILTER: Gruppe {name} gesperrt')
+    if extras is not None:
+        filter_nfo(plan, filters, extras)
+
+def filter_nfo(plan, filters, extras):
+    names = [plan['release']] + [Path(v['relative']).stem for v in plan['videos']]
+    for row in filters:
+        kind, name = row[:2]
         if kind == 'nfo' and any(n.upper().endswith('-' + name.upper()) for n in names):
             require(any(x['validNfo'] for x in extras), f'FILTER: Brauchbare NFO für {name} fehlt')
 
@@ -391,11 +401,7 @@ def extras_for(plan, spool, imdb):
         item['relative'] = str(rel)
         item['validNfo'] = False
         if rel.suffix.lower() == '.nfo':
-            text = Path(item['snapshot']).read_text(errors='replace')
-            media_dump = (re.search(r'^(General|Allgemein)\s*$', text, re.M | re.I)
-                          and re.search(r'^[A-Za-z ]+ {10,}:', text, re.M)
-                          and not re.search(r'imdb\.com|themoviedb\.org|director|handlung', text, re.I))
-            item['validNfo'] = bool(text.strip()) and not media_dump
+            item['validNfo'] = usable_nfo(Path(item['snapshot']).read_bytes())
             # Series packs may legitimately contain episode IMDb IDs: retain Sonarr IDs.
             if not item['validNfo']:
                 continue
@@ -499,15 +505,10 @@ def run(config, event, args):
             log('Extras: Vollständigkeit der vorhandenen Sicherung vom Betreiber für diesen Replay bestätigt.')
         filters = json.loads(config['FILTERS_JSON'])
         check_indexer(event, config, filters)
-        filter_plan(plan, event, filters, extras)
+        filter_plan(plan, event, filters)
         collapsed = collapse_duplicate_folders(plan, extras)
         if collapsed:
             log(f'Transit: Doppelte gleichnamige Release-Ordner bei {collapsed} Dateien entfernt.')
-        select_transit_layout(plan, extras)
-        kind, transit_name = transit_spec(plan)
-        dest = base / transit_name
-        require_empty_upload_target(config, plan)
-        payload = payload_for(plan, event, dest, config)
         for video in plan['videos']:
             file = Path(video['imported'])
             require(file.is_file() and not file.is_symlink(), 'Importvideo fehlt oder ist ein Symlink')
@@ -515,15 +516,25 @@ def run(config, event, args):
             require(file.stat().st_size > 0 and file.stat().st_dev == base.stat().st_dev, 'Video leer oder auf anderem Dateisystem')
         require(len({x['relative'] for x in plan['videos'] + extras}) == len(plan['videos'] + extras), 'Namenskollision in Transit')
         files = {item['relative']: item.get('imported') or item['snapshot'] for item in plan['videos'] + extras}
-        report, replacements = check_srrdb(plan['release'], transit_name if kind == 'directory' else None, files)
+        report, replacements = check_srrdb(plan['release'], plan['transitFolder'], files, direct_candidate=direct_mkv(plan, extras))
         log(report)
-        for item in extras:
-            if item['relative'] in replacements:
-                data = replacements[item['relative']]
-                item['sha256'] = hashlib.sha256(data).hexdigest()
-                snapshot = extras_spool / ('srrdb-' + item['sha256'] + '.extra')
-                store_nfo(snapshot, data)
-                item['snapshot'] = str(snapshot)
+        by_name = {item['relative']: item for item in extras}
+        for rel, data in replacements.items():
+            if rel not in by_name:
+                item = dict(relative=rel)
+                extras.append(item)
+                by_name[rel] = item
+            checksum = hashlib.sha256(data).hexdigest()
+            snapshot = extras_spool / ('srrdb-' + checksum + '.extra')
+            by_name[rel].update(validNfo=usable_nfo(data), sha256=checksum, snapshot=str(snapshot))
+        filter_nfo(plan, filters, extras)
+        select_transit_layout(plan, extras)
+        kind, transit_name = transit_spec(plan)
+        dest = base / transit_name
+        require_empty_upload_target(config, plan)
+        payload = payload_for(plan, event, dest, config)
+        for rel, data in replacements.items():
+            store_nfo(Path(by_name[rel]['snapshot']), data)
         plan['extras'] = extras
         write_json(spool / 'plan.json', plan)
         with transit_locks(base, plan):

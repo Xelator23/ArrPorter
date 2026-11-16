@@ -131,14 +131,21 @@ class PipelineTests(unittest.TestCase):
         self.addCleanup(log_patch.stop)
 
     def test_repaired_nfo_uses_verified_snapshot_on_replay(self):
+        self.run_restored_nfo(local_present=True)
+
+    def test_missing_required_nfo_switches_direct_mkv_to_directory(self):
+        self.run_restored_nfo(local_present=False)
+
+    def run_restored_nfo(self, local_present):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             event, records = fixture(1)
-            release = event['sonarr_release_title']
+            release = event['sonarr_release_title'] = 'Series.S01.1080p-WeebPinn'
             source = root / release
             source.mkdir()
             local = source / 'original.nfo'
-            local.write_bytes(b'Original\r\n')
+            if local_present:
+                local.write_bytes(b'Original\r\n')
             library = root / 'library'
             library.mkdir()
             video = library / 'renamed.mkv'
@@ -150,7 +157,7 @@ class PipelineTests(unittest.TestCase):
             records[1]['data'] = {'droppedPath': str(source / 'original.mkv'), 'importedPath': str(video)}
             base = root / 'transit'
             config = dict(SONARR_URL='mock', SONARR_API_KEY='test', UPPOLLO_URL='mock', API_KEY='test',
-                          TRANSIT_BASE=str(base), FILTERS_JSON='[["resolution","1080p","true"]]', CLIENT_UPLOAD_BASE=str(upload))
+                          TRANSIT_BASE=str(base), FILTERS_JSON='[["resolution","1080p","true"],["nfo","WeebPinn"]]', CLIENT_UPLOAD_BASE=str(upload))
             args = Namespace(check=False, dry_run=True, no_extras_confirmed=False)
             original = b'Original\n'
             with patch.object(s, 'history', return_value=records), patch.object(s, 'check_indexer'), \
@@ -159,8 +166,11 @@ class PipelineTests(unittest.TestCase):
                 s.run(config, event, args)
                 post.assert_not_called()
                 self.assertFalse((base / release).exists())
-                self.assertEqual(local.read_bytes(), b'Original\r\n')
-                local.unlink()
+                if local_present:
+                    self.assertEqual(local.read_bytes(), b'Original\r\n')
+                    local.unlink()
+                else:
+                    self.assertFalse(local.exists())
                 source.rmdir()
                 args.dry_run = False
                 config['DRY_RUN'] = 'false'

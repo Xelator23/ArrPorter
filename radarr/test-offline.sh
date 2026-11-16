@@ -250,4 +250,19 @@ cmp "$ROOT/expected.nfo" "$ROOT/media/release.nfo"
 cmp "$ROOT/expected.nfo" "$ROOT/transit-repaired_live/$radarr_moviefile_scenename/release.nfo"
 cmp <(printf 'original\r\n') "$radarr_moviefile_sourcefolder/release.nfo"
 echo 'PASS: CRC-verified original NFO used for library and transit on live import'
+export radarr_moviefile_scenename='Movie.1080p-snk'
+export radarr_moviefile_sourcefolder="$ROOT/download/$radarr_moviefile_scenename"
+export radarr_moviefile_sourcepath="$radarr_moviefile_sourcefolder/Original.Download.Name.mkv"
+mkdir -p "$radarr_moviefile_sourcefolder"
+printf '\nNFO_REQUIRED_GROUPS=(snk)\n' >> "$ROOT/filters.conf"
+setup_case required_missing
+bash "$HERE/radarr-import-chain.sh"
+grep -Fq 'Keine brauchbare NFO für snk' "$ROOT/transit-required_missing/_logs/"*.log
+setup_case required_restored
+MOCK_SRRDB_NFO=true bash "$HERE/radarr-import-chain.sh"
+cmp "$ROOT/expected.nfo" "$ROOT/transit-required_restored/$radarr_moviefile_scenename/release.nfo"
+cmp "$ROOT/expected.nfo" "$ROOT/media/release.nfo"
+[[ -f "$ROOT/transit-required_restored/$radarr_moviefile_scenename/Original.Download.Name.mkv" ]]
+[[ ! -e "$radarr_moviefile_sourcefolder/release.nfo" ]]
+echo 'PASS: required NFO restored into directory layout for direct-MKV group'
 echo 'All offline tests passed.'

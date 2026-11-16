@@ -93,12 +93,27 @@ class CheckTests(unittest.TestCase):
             check('Movie-G', 'Movie-G', self.files, unavailable)
 
     def test_streamed_video(self):
+        self.assertEqual(check('Movie-G', 'Movie-G', self.files, self.read)[1], {})
         data = bytes(range(256)) * 5000
         self.files['movie.mkv'].write_bytes(data)
         self.files = {'movie.mkv': self.files['movie.mkv']}
         self.details['files'] = []
         self.details['archived-files'][0]['crc'] = f'{zlib.crc32(data):08x}'
         self.assertIn('CRC32', self.run_check())
+
+    def test_missing_nfo_and_missing_crc(self):
+        del self.files['movie.nfo']
+        report, originals = check('Movie-G', 'Movie-G', self.files, self.read)
+        self.assertEqual(originals, {'movie.nfo': b'abc'})
+        self.assertIn('lokal fehlend', report)
+        del self.details['files'][0]['crc']
+        with self.assertRaisesRegex(ValueError, 'CRC32-Referenz fehlt'):
+            self.run_check()
+
+    def test_restored_nfo_needs_matching_folder(self):
+        del self.files['movie.nfo']
+        with self.assertRaisesRegex(ValueError, 'Release-Ordner erwartet'):
+            check('Movie-G', 'Wrong', self.files, self.read, direct_candidate=True)
 
     def test_missing_invalid_and_conflicting_reference(self):
         del self.details['files'][0]['crc']
