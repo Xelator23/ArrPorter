@@ -30,14 +30,17 @@ def scan(root):
                 result.append(p)
     return result
 
-def sync(source, dest, manifest, video=None):
-    source, dest = Path(source), Path(dest)
+def validate_roots(source, dest):
     require(source.is_dir() and dest.is_dir(), 'Quell- oder Filmordner fehlt; keine NFO gelöscht')
     require(source.is_absolute() and dest.is_absolute() and source.resolve() == source and dest.resolve() == dest,
             'Quell- oder Zielpfad wird umgeleitet')
     require(source != dest and source not in dest.parents and dest not in source.parents,
             'Quelle und Ziel überlappen')
     require(source.parent != source and dest.parent != dest, 'Wurzelverzeichnis nicht erlaubt')
+
+def sync(source, dest, manifest, video=None):
+    source, dest = Path(source), Path(dest)
+    validate_roots(source, dest)
     current = scan(source)  # Complete enumeration required even for zero extras.
     previous = [p for p in scan(dest) if p.suffix.lower() == '.nfo']
     previous_hashes = {p: digest(p) for p in previous}
@@ -99,7 +102,9 @@ if __name__ == '__main__':
                  os.environ.get('radarr_moviefile_path'))
         else:
             # Capture current download files even if Radarr later removes the source.
-            sync(os.environ['radarr_moviefile_sourcefolder'], preview or dest,
-                 os.environ['RADARR_EXTRAS_MANIFEST'], os.environ.get('radarr_moviefile_path'))
+            source = Path(os.environ['radarr_moviefile_sourcefolder'])
+            if preview:
+                validate_roots(source, Path(dest))
+            sync(source, preview or dest, os.environ['RADARR_EXTRAS_MANIFEST'], os.environ.get('radarr_moviefile_path'))
     except (ValueError, OSError) as error:
         raise SystemExit('ERROR: Extras: ' + str(error))
