@@ -190,4 +190,30 @@ export radarr_moviefile_sourcepath='/downloads/Original.Download.Name.mkv'
 unset radarr_moviefile_sourcefolder
 if run; then echo 'FAIL: missing source folder accepted'; exit 1; fi
 echo 'PASS: missing original folder stops the upload'
+mkdir -p "$ROOT/download/$FOLDER"
+export radarr_moviefile_sourcefolder="$ROOT/download/$FOLDER"
+export radarr_moviefile_sourcepath="$radarr_moviefile_sourcefolder/Original.Download.Name.mkv"
+printf 'library sidecar\n' > "$ROOT/media/video.nfo"
+printf 'original Radarr extra\n' > "$ROOT/media/video.nfo-orig"
+printf 'old\n' > "$ROOT/media/release.nfo"
+setup_case chain_srrdb_failure
+if MOCK_SRRDB_MISSING=true bash "$HERE/radarr-import-chain.sh"; then exit 1; fi
+[[ $(cat "$ROOT/media/video.nfo") == 'library sidecar' && -f "$ROOT/media/release.nfo" ]]
+printf 'new\n' > "$radarr_moviefile_sourcefolder/release.nfo"
+setup_case chain_dry
+sed -i 's/^DRY_RUN=false$/DRY_RUN=true/' "$UPPOLLO_CONFIG"
+bash "$HERE/radarr-import-chain.sh"
+grep -q 'DRY RUN OK' "$ROOT/transit-chain_dry/_logs/"*.log
+[[ $(cat "$ROOT/media/release.nfo") == old && -f "$ROOT/media/video.nfo" ]]
+setup_case chain_live
+bash "$HERE/radarr-import-chain.sh"
+cmp "$radarr_moviefile_sourcefolder/release.nfo" "$ROOT/media/release.nfo"
+cmp "$ROOT/media/release.nfo" "$ROOT/transit-chain_live/$FOLDER/release.nfo"
+[[ ! -e "$ROOT/media/video.nfo" && -f "$ROOT/media/video.nfo-orig" ]]
+setup_case chain_no_nfo
+rm -- "$radarr_moviefile_sourcefolder/release.nfo"
+printf 'library sidecar\n' > "$ROOT/media/video.nfo"
+bash "$HERE/radarr-import-chain.sh"
+[[ -f "$ROOT/media/video.nfo" && ! -e "$ROOT/transit-chain_no_nfo/$FOLDER/video.nfo" ]]
+echo 'PASS: library NFO protected on srrDB failure, dry run and ambiguous empty source; live upgrade uses original'
 echo 'All offline tests passed.'

@@ -3,6 +3,7 @@ import json
 import hashlib
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 
 # Only library metadata and subtitles belong in Transit. Samples, SFV/RAR and
@@ -29,7 +30,7 @@ def scan(root):
                 result.append(p)
     return result
 
-def sync(source, dest, manifest):
+def sync(source, dest, manifest, video=None):
     source, dest = Path(source), Path(dest)
     require(source.is_dir() and dest.is_dir(), 'Quell- oder Filmordner fehlt; keine NFO gelöscht')
     require(source.is_absolute() and dest.is_absolute() and source.resolve() == source and dest.resolve() == dest,
@@ -72,6 +73,12 @@ def sync(source, dest, manifest):
                 os.link(stage/rel, target)
             require(digest(target) == value, 'Übernahme nicht verifiziert')
         keep = {target for _, _, target, _ in entries}
+        if video and not any(target.suffix.lower() == '.nfo' for target in keep):
+            sidecar = Path(video).with_suffix('.nfo')
+            for old in previous:
+                if old.parent == sidecar.parent and old.name.casefold() == sidecar.name.casefold():
+                    keep.add(old)
+                    print(f'Extras: NFO beim aktuellen Film erhalten (Originalname unbekannt): {old}', flush=True)
         for old in previous:
             if old not in keep:
                 require(not old.is_symlink() and old.resolve() == old and digest(old) == previous_hashes[old],
@@ -80,12 +87,19 @@ def sync(source, dest, manifest):
                 print('Extras: Alte NFO entfernt: ' + str(old), flush=True)
         Path(manifest).write_text(json.dumps({'source':str(source),'destination':str(dest),
             'files':[{'path':str(target),'sha256':value} for _,_,target,value in entries]}), encoding='utf-8')
-    print(f'Extras: {len(entries)} aktuelle Dateien übernommen; NFO-Bestand aktualisiert.', flush=True)
+    print(f'Extras: {len(entries)} aktuelle Dateien übernommen.', flush=True)
 
 if __name__ == '__main__':
     try:
         require(bool(os.environ.get('RADARR_EXTRAS_MANIFEST')), 'Nur über radarr-import-chain.sh starten')
-        sync(os.environ.get('radarr_moviefile_sourcefolder',''), os.environ.get('radarr_movie_path',''),
-             os.environ['RADARR_EXTRAS_MANIFEST'])
+        dest = os.environ['radarr_movie_path']
+        preview = os.environ.get('RADARR_EXTRAS_PREVIEW')
+        if sys.argv[1:] == ['--commit']:
+            sync(os.environ['RADARR_EXTRAS_PREVIEW'], dest, os.environ['RADARR_EXTRAS_MANIFEST'],
+                 os.environ.get('radarr_moviefile_path'))
+        else:
+            # Capture current download files even if Radarr later removes the source.
+            sync(os.environ['radarr_moviefile_sourcefolder'], preview or dest,
+                 os.environ['RADARR_EXTRAS_MANIFEST'], os.environ.get('radarr_moviefile_path'))
     except (ValueError, OSError) as error:
         raise SystemExit('ERROR: Extras: ' + str(error))

@@ -6,6 +6,8 @@
 4. Aktiviere **On Import** und **On Upgrade**. Der Hook übernimmt beim Import die Extras des aktuellen Downloads. Bei einem Upgrade kann er alte NFOs im Filmordner entfernen. Verwende für den ersten Import einen Film, dessen NFOs aus dem aktuellen Download stammen.
 5. Klicke **Test** und speichere die Verbindung. Der Test fragt die upPollo-API ohne Upload ab. Für die Textausgabe kannst du auf Unraid denselben Test im Container starten.
 
+Soll ArrPorter die Original-NFO übernehmen, entferne `.nfo` aus Radarrs **Import Extra Files**. Radarr verwendet für über diese Einstellung importierte NFOs die Endung `.nfo-orig`. Bei älteren Imports lohnt es sich daher, im Filmordner auch nach `*.nfo-orig` zu suchen.
+
 ```bash
 docker exec -e radarr_eventtype=Test Radarr bash /scripts/arrporter/radarr/radarr-import-chain.sh
 ```

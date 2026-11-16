@@ -15,6 +15,6 @@
 
 Adressen und Zugangsdaten stehen einmal in der privaten `arrporter.conf`. Jeder Dienst hat seine eigene `filters.conf`, seinen Transitpfad und seinen eigenen Schalter für den Probelauf.
 
-Es sind keine Zugangsdaten oder Produktionskonfigurationen enthalten. Beide Dienste starten in der Vorlage im Probelauf. Der Radarr-Extras-Import und die Sonarr-Extras-Sicherung arbeiten auch im Probelauf. Für den ersten Test ein entbehrliches Release verwenden.
+Beide Dienste starten in der Vorlage im Probelauf. ArrPorter prüft Radarr-Extras in einem temporären Verzeichnis. Sonarr sichert Extras für das spätere Sammelereignis. Der reguläre Bibliotheksimport durch Radarr oder Sonarr findet in beiden Fällen statt.
 
 ArrPorter ist eigenständig. Die Installation von upPollo, Tracker, Indexer und Download-Clients gehört nicht zum Paket.

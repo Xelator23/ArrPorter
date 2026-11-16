@@ -8,6 +8,13 @@ case "$MODE" in run|--check|--dry-run) ;; *) echo 'Usage: radarr-uppollo.sh [--c
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 skip() { log "SKIP: $*"; exit 0; }
+filter_skip() {
+    # A filtered live import still imports its local extras into the movie library.
+    if [[ ${DRY_RUN:-true} == false && -n ${RADARR_EXTRAS_PREVIEW:-} ]]; then
+        python3 -B "$SCRIPT_DIR/radarr_extras.py" --commit
+    fi
+    skip "$@"
+}
 source "$SCRIPT_DIR/../scripts/load-config.sh" "$SCRIPT_DIR"
 export SPECIAL_GROUP
 source "${FILTER_CONFIG:-$SCRIPT_DIR/filters.conf}"
@@ -66,7 +73,7 @@ STATE="$TRANSIT_BASE/_state/$JOB.json"
 TMP=$(mktemp -d)
 cleanup() { rm -f -- "$TMP/cookie" "$TMP/login" "$TMP/request.json" "$TMP/response" "$TMP/trackers" "$TMP/plan.json"; rmdir -- "$TMP" 2>/dev/null || true; }
 trap cleanup EXIT
-trap 'log "ERROR: Abbruch in Zeile $LINENO. Transit bleibt erhalten; siehe Statusdatei."' ERR
+trap 'log "ERROR: Abbruch in Zeile $LINENO."; if [[ -f "$STATE" ]]; then log "Status: $STATE"; fi' ERR
 log "START: Modus=$DRY_RUN (true=Test), Job=$JOB"
 if [[ -f "$STATE" ]]; then
     log "Vorhandener Status: $(jq -r .status "$STATE")"
@@ -86,7 +93,7 @@ jq -e 'type == "array" and all(.[]; (.url | type == "string"))' "$TMP/trackers" 
 TRACKERS=$(jq -r '.[].url | select(test("^(https?|udp|wss?)://"; "i"))' "$TMP/trackers")
 [[ -n "$TRACKERS" ]] || die 'Keine echten Tracker gefunden; Übergabe gestoppt.'
 for blocked in "${EXCLUDED_INDEXERS[@]}"; do
-    [[ ${TRACKERS,,} != *"${blocked,,}"* ]] || skip "Gesperrter Tracker: $blocked"
+    [[ ${TRACKERS,,} != *"${blocked,,}"* ]] || filter_skip "Gesperrter Tracker: $blocked"
 done
 elif [[ "$SOURCE_KIND" == blackhole ]]; then
     log 'Blackhole: Ursprüngliche Downloadseite unbekannt; Quellenfilter entfällt. Keine qBittorrent-Quellabfrage erforderlich.'
@@ -101,7 +108,7 @@ else
           | if length == 1 then .[0] else error("Kein eindeutiger Usenet-Indexer") end' <<<"$HISTORY")
     fi
     for blocked in "${EXCLUDED_INDEXERS[@]}"; do
-        [[ ${INDEXER,,} != *"${blocked,,}"* ]] || skip "Gesperrter Usenet-Indexer: $blocked"
+        [[ ${INDEXER,,} != *"${blocked,,}"* ]] || filter_skip "Gesperrter Usenet-Indexer: $blocked"
     done
     log "Usenet-Indexer geprüft: $INDEXER. Keine qBittorrent-Quellabfrage erforderlich."
 fi
@@ -122,10 +129,10 @@ fi
 [[ -n "$RELEASE" && "$RELEASE" != .* && "$RELEASE" != */* && "$RELEASE" != *\\* && ${#RELEASE} -le 200 && ! "$RELEASE" =~ [[:cntrl:]] ]] || die 'Unsicherer oder zu langer Release-Name.'
 UPPER=${RELEASE^^}
 for blocked in "${EXCLUDED_INDEXERS[@]}"; do
-    [[ ${RELEASE,,} != *"${blocked,,}"* ]] || skip "Gesperrter Name: $blocked (kein Tracker-Nachweis)."
+    [[ ${RELEASE,,} != *"${blocked,,}"* ]] || filter_skip "Gesperrter Name: $blocked (kein Tracker-Nachweis)."
 done
 for group in "${EXCLUDED_GROUPS[@]}"; do
-    [[ "$UPPER" != *"-${group^^}" ]] || skip "Gesperrte Gruppe: $group"
+    [[ "$UPPER" != *"-${group^^}" ]] || filter_skip "Gesperrte Gruppe: $group"
 done
 # Treat tags literally; regex-escape metacharacters such as '+' first.
 CHECK="${radarr_moviefile_quality:-} $RELEASE $(basename -- "$VIDEO")"
@@ -136,24 +143,25 @@ matches() {
       | $text | test("(^|[-. _])" + $escaped + "([-. _]|$)"; "i")' >/dev/null
 }
 for tag in "${!ALLOWED_TAGS[@]}"; do
-    if [[ ${ALLOWED_TAGS[$tag]} == false ]] && matches "$tag"; then skip "Gesperrter Tag: $tag"; fi
+    if [[ ${ALLOWED_TAGS[$tag]} == false ]] && matches "$tag"; then filter_skip "Gesperrter Tag: $tag"; fi
 done
 FOUND=false
 for res in "${!ALLOWED_RESOLUTIONS[@]}"; do
     if matches "$res"; then
-        [[ ${ALLOWED_RESOLUTIONS[$res]} == true ]] || skip "Gesperrte Auflösung: $res"
+        [[ ${ALLOWED_RESOLUTIONS[$res]} == true ]] || filter_skip "Gesperrte Auflösung: $res"
         FOUND=true
     fi
 done
-[[ "$FOUND" == true ]] || skip 'Keine erlaubte Auflösung erkannt.'
+[[ "$FOUND" == true ]] || filter_skip 'Keine erlaubte Auflösung erkannt.'
 # Prefer a sidecar matching the imported video or release; never choose an arbitrary NFO.
 NFO=''
 [[ -f ${RADARR_EXTRAS_MANIFEST:-} && ! -L "$RADARR_EXTRAS_MANIFEST" ]] || die 'Aktuelle Extras-Liste fehlt; radarr-import-chain.sh verwenden.'
-jq -e --arg base "$BASE" '.destination == $base and (.files | type == "array")' "$RADARR_EXTRAS_MANIFEST" >/dev/null || die 'Extras-Liste gehört nicht zum Filmordner.'
+EXTRAS_BASE=${RADARR_EXTRAS_PREVIEW:-$BASE}
+jq -e --arg base "$EXTRAS_BASE" '.destination == $base and (.files | type == "array")' "$RADARR_EXTRAS_MANIFEST" >/dev/null || die 'Extras-Liste gehört nicht zur aktuellen Extras-Quelle.'
 mapfile -t CURRENT_EXTRAS < <(jq -r '.files[].path' "$RADARR_EXTRAS_MANIFEST")
 NFOS=()
 for extra in "${CURRENT_EXTRAS[@]}"; do
-    [[ "$extra" == "$BASE/"* && -f "$extra" && ! -L "$extra" && $(realpath -e -- "$extra") == "$extra" ]] || die 'Aktuelles Extra fehlt oder wird umgeleitet.'
+    [[ "$extra" == "$EXTRAS_BASE/"* && -f "$extra" && ! -L "$extra" && $(realpath -e -- "$extra") == "$extra" ]] || die 'Aktuelles Extra fehlt oder wird umgeleitet.'
     expected=$(jq -er --arg path "$extra" '.files[] | select(.path == $path) | .sha256' "$RADARR_EXTRAS_MANIFEST")
     actual=$(sha256sum -- "$extra"); actual=${actual%% *}
     [[ "$actual" == "$expected" ]] || die 'Aktuelles Extra wurde verändert.'
@@ -173,7 +181,7 @@ if [[ -n "$NFO" && -s "$NFO" ]]; then
        ! grep -qiE 'imdb\.com|themoviedb\.org|director|handlung' "$NFO"; then VALID_NFO=false; fi
 fi
 for group in "${NFO_REQUIRED_GROUPS[@]}"; do
-    if [[ "$UPPER" == *"-${group^^}" && "$VALID_NFO" != true ]]; then skip "Keine eindeutige, brauchbare NFO für $group"; fi
+    if [[ "$UPPER" == *"-${group^^}" && "$VALID_NFO" != true ]]; then filter_skip "Keine eindeutige, brauchbare NFO für $group"; fi
 done
 IMDB=${radarr_movie_imdbid:-}
 TMDB=${radarr_movie_tmdbid:-0}

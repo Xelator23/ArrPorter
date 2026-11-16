@@ -94,7 +94,7 @@ def collapse(rel, folder):
         parts.pop(0)
     return '/'.join(parts)
 
-def plan(base, movie, video, name, folder, release, job, manifest, nfo=''):
+def plan(base, movie, video, name, folder, release, job, manifest, nfo='', extras_root=None):
     safe_rel(name); safe_rel(folder)
     require('/' not in name and '/' not in folder, 'Datei-/Ordnername enthält Pfad')
     require(re.fullmatch('[a-f0-9]{64}', job), 'Ungültige Job-ID')
@@ -102,14 +102,15 @@ def plan(base, movie, video, name, folder, release, job, manifest, nfo=''):
     contained(video, movie)
     require(not base.is_relative_to(movie) and not movie.is_relative_to(base), 'Bibliothek und Transit überlappen')
     files = [dict(relative=name, source=str(video), kind='video', size=video.stat().st_size)]
-    require(manifest['destination'] == str(movie), 'Falsches Extras-Manifest')
+    extras_root = exact(extras_root) if extras_root else movie
+    require(manifest['destination'] == str(extras_root), 'Falsches Extras-Manifest')
     for item in manifest['files']:
-        src = contained(Path(item['path']), movie)
+        src = contained(Path(item['path']), extras_root)
         exact(src, True)
         require(digest(src) == item['sha256'], 'Extras wurden verändert')
         if str(src) != nfo and src.suffix.lower() not in SUBS:
             continue
-        rel = collapse(src.relative_to(movie).as_posix(), folder)
+        rel = collapse(src.relative_to(extras_root).as_posix(), folder)
         if src.suffix.lower() in SUBS:
             parts = rel.split('/')
             rel = 'Subs/' + '/'.join(parts[1:] if parts[0].lower() == 'subs' else parts)
@@ -354,7 +355,9 @@ def main():
     base = exact(os.environ['TRANSIT_BASE'])
     if mode == 'prepare':
         e = os.environ
-        s = plan(base, Path(e['RT_BASE']), Path(e['RT_VIDEO']), e['RT_VIDEO_NAME'], e['RT_FOLDER'], e['RT_RELEASE'], e['RT_JOB'], read(e['RADARR_EXTRAS_MANIFEST']), e.get('RT_NFO', ''))
+        preview = e.get('RADARR_EXTRAS_PREVIEW')
+        movie = Path(e['RT_BASE'])
+        s = plan(base, movie, Path(e['RT_VIDEO']), e['RT_VIDEO_NAME'], e['RT_FOLDER'], e['RT_RELEASE'], e['RT_JOB'], read(e['RADARR_EXTRAS_MANIFEST']), e.get('RT_NFO', ''), preview)
         s['downloadId'] = e['RT_HASH']
         guard(s)
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
@@ -363,6 +366,13 @@ def main():
         folder = s['transitFolder'] if s['transitKind'] == 'directory' else None
         print(check(s['release'], folder, files), file=sys.stderr)
         if e['RT_DRY_RUN'] != 'true':
+            if preview:
+                from radarr_extras import sync
+                with contextlib.redirect_stdout(sys.stderr):
+                    sync(preview, movie, e['RADARR_EXTRAS_MANIFEST'], e['RT_VIDEO'])
+                for item in s['files']:
+                    if item['kind'] == 'extra':
+                        item['source'] = str(movie / Path(item['source']).relative_to(preview))
             stage(base, s)
         print(json.dumps(s))
     elif mode == 'guard':
