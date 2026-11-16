@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -129,6 +130,47 @@ class PipelineTests(unittest.TestCase):
         log_patch.start()
         self.addCleanup(log_patch.stop)
 
+    def test_repaired_nfo_uses_verified_snapshot_on_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            event, records = fixture(1)
+            release = event['sonarr_release_title']
+            source = root / release
+            source.mkdir()
+            local = source / 'original.nfo'
+            local.write_bytes(b'Original\r\n')
+            library = root / 'library'
+            library.mkdir()
+            video = library / 'renamed.mkv'
+            video.write_bytes(b'video')
+            upload = root / 'upload'
+            upload.mkdir()
+            event.update(sonarr_eventtype='Download', sonarr_series_id='1', sonarr_series_path=str(library),
+                         sonarr_sourcepath=str(source), sonarr_episodefile_paths=str(video))
+            records[1]['data'] = {'droppedPath': str(source / 'original.mkv'), 'importedPath': str(video)}
+            base = root / 'transit'
+            config = dict(SONARR_URL='mock', SONARR_API_KEY='test', UPPOLLO_URL='mock', API_KEY='test',
+                          TRANSIT_BASE=str(base), FILTERS_JSON='[["resolution","1080p","true"]]', CLIENT_UPLOAD_BASE=str(upload))
+            args = Namespace(check=False, dry_run=True, no_extras_confirmed=False)
+            original = b'Original\n'
+            with patch.object(s, 'history', return_value=records), patch.object(s, 'check_indexer'), \
+                 patch.object(s, 'check_srrdb', return_value=('srrDB OK', {'original.nfo': original})), \
+                 patch.object(s, 'http_json', return_value={'status':'queued'}) as post:
+                s.run(config, event, args)
+                post.assert_not_called()
+                self.assertFalse((base / release).exists())
+                self.assertEqual(local.read_bytes(), b'Original\r\n')
+                local.unlink()
+                source.rmdir()
+                args.dry_run = False
+                config['DRY_RUN'] = 'false'
+                s.run(config, event, args)
+                post.assert_called_once()
+            extra = json.loads(next((base / '_events').glob('*/plan.json')).read_text())['extras'][0]
+            self.assertTrue((base / release / 'original.nfo').samefile(extra['snapshot']))
+            self.assertEqual((base / release / 'original.nfo').read_bytes(), original)
+            self.assertEqual(extra['sha256'], hashlib.sha256(original).hexdigest())
+
     def test_real_hardlinks_one_post_and_duplicate_prevention(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); library = root/'library'; library.mkdir()
@@ -151,7 +193,7 @@ class PipelineTests(unittest.TestCase):
                 post.assert_not_called()
                 self.assertFalse(list((root/'transit'/'_state').glob('*.json')))
                 self.assertFalse((root/'transit'/'original.mkv').exists())
-                with patch.object(s,'check_srrdb',return_value='srrDB OK'):
+                with patch.object(s,'check_srrdb',return_value=('srrDB OK', {})):
                     s.run(config,event,args)
                 self.assertTrue((root/'transit'/'original.mkv').samefile(video))
                 self.assertFalse((root/'transit'/'Original Folder').exists())

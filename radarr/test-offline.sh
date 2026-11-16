@@ -20,6 +20,15 @@ import zlib
 
 class Fixture:
     def open(self, url, timeout):
+        if os.getenv('MOCK_SRRDB_NFO'):
+            release = os.environ['radarr_moviefile_scenename']
+            original = b'original\n'
+            if url == f'https://www.srrdb.com/download/file/{release}/release.nfo':
+                return io.BytesIO(original)
+            assert url == f'https://api.srrdb.com/v1/details/{release}', url
+            result = {'name': release, 'files': [{'name': 'release.nfo', 'crc': '%08X' % zlib.crc32(original)}],
+                      'archived-files': [{'name': 'Original.Download.Name.mkv', 'crc': '%08X' % zlib.crc32(b'video fixture\n')}]}
+            return io.BytesIO(json.dumps(result).encode())
         assert url.startswith('https://api.srrdb.com/v1/details/'), url
         if os.getenv('MOCK_SRRDB_MISSING') or os.getenv('MOCK_SRRDB_CORRUPT'):
             release = url.rsplit('/', 1)[1]
@@ -225,4 +234,20 @@ printf 'library sidecar\n' > "$ROOT/media/video.nfo"
 bash "$HERE/radarr-import-chain.sh"
 [[ -f "$ROOT/media/video.nfo" && ! -e "$ROOT/transit-chain_no_nfo/$FOLDER/video.nfo" ]]
 echo 'PASS: library NFO protected on srrDB failure, dry run and ambiguous empty source; live upgrade uses original'
+export radarr_moviefile_sourcefolder="$ROOT/download/$radarr_moviefile_scenename"
+export radarr_moviefile_sourcepath="$radarr_moviefile_sourcefolder/Original.Download.Name.mkv"
+mkdir -p "$radarr_moviefile_sourcefolder"
+printf 'original\r\n' > "$radarr_moviefile_sourcefolder/release.nfo"
+printf 'original\n' > "$ROOT/expected.nfo"
+setup_case repaired_dry
+sed -i 's/^DRY_RUN=false$/DRY_RUN=true/' "$UPPOLLO_CONFIG"
+MOCK_SRRDB_NFO=true bash "$HERE/radarr-import-chain.sh"
+grep -Fq 'Original-NFO geladen und geprüft' "$ROOT/transit-repaired_dry/_logs/"*.log
+[[ ! -e "$ROOT/media/release.nfo" && ! -e "$ROOT/transit-repaired_dry/$radarr_moviefile_scenename" ]]
+setup_case repaired_live
+MOCK_SRRDB_NFO=true bash "$HERE/radarr-import-chain.sh"
+cmp "$ROOT/expected.nfo" "$ROOT/media/release.nfo"
+cmp "$ROOT/expected.nfo" "$ROOT/transit-repaired_live/$radarr_moviefile_scenename/release.nfo"
+cmp <(printf 'original\r\n') "$radarr_moviefile_sourcefolder/release.nfo"
+echo 'PASS: CRC-verified original NFO used for library and transit on live import'
 echo 'All offline tests passed.'

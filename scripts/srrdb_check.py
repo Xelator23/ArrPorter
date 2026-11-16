@@ -1,9 +1,11 @@
-"""Read-only comparison of a proposed transit inventory with srrDB metadata."""
+"""Verify a transit inventory and retrieve original NFO bytes for CRC mismatches."""
 import http.client
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import struct
+import tempfile
 from urllib.error import URLError
 from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, build_opener
@@ -64,6 +66,19 @@ def file_crc(path):
         while chunk := stream.read(1024 * 1024):
             checksum = zlib.crc32(chunk, checksum)
     return checksum
+
+
+def store_nfo(path, data):
+    """Publish verified bytes at a staging path without modifying existing hardlinks."""
+    stream = tempfile.NamedTemporaryFile(dir=path.parent, delete=False)
+    temp = Path(stream.name)
+    try:
+        with stream:
+            stream.write(data)
+        temp.chmod(0o644)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def subs_members(data):
@@ -162,11 +177,13 @@ def reference(release, read):
 
 def check(release, folder, files, read=None):
     """files maps final transit-relative names to local files; folder is None for direct MKVs."""
-    expected = reference(release, read or fetch)
+    read = read or fetch
+    expected = reference(release, read)
     if expected is None:
-        return f'srrDB: Kein Eintrag für {release}. Übergabe mit lokalen Prüfungen.'
+        return f'srrDB: Kein Eintrag für {release}. Übergabe mit lokalen Prüfungen.', {}
     actual = {relative(name): Path(source) for name, source in files.items()}
     problems = []
+    mismatched_nfos = {}
     if folder is not None and folder != release:
         problems.append(f'Release-Ordner erwartet {release!r}, geplant {folder!r}')
     for path in sorted(expected.keys() - actual.keys()):
@@ -179,7 +196,25 @@ def check(release, folder, files, read=None):
             continue
         checksum = file_crc(actual[path])
         if checksum != expected[path]:
-            problems.append(f'CRC32 weicht ab: {path} (srrDB {expected[path]:08X}, lokal {checksum:08X})')
+            if path.suffix.lower() == '.nfo':
+                mismatched_nfos[path] = checksum
+            else:
+                problems.append(f'CRC32 weicht ab: {path} (srrDB {expected[path]:08X}, lokal {checksum:08X})')
     if problems:
         raise ValueError('srrDB: ' + '; '.join(problems) + '. Keine Übergabe an upPollo.')
-    return f'srrDB OK: {release}, {len(expected)} Dateinamen, Pfade und CRC32-Prüfsummen stimmen überein.'
+    replacements = {}
+    messages = []
+    for path, local_crc in mismatched_nfos.items():
+        url = f'https://www.srrdb.com/download/file/{quote(release, safe="")}/{quote(path.as_posix())}'
+        try:
+            data = read(url)
+        except (OSError, ValueError) as error:
+            raise ValueError(f'srrDB: Original-NFO {path} nicht abrufbar: {error}. Keine Übergabe an upPollo.') from error
+        crc = zlib.crc32(data)
+        if crc != expected[path]:
+            raise ValueError(f'srrDB: CRC32 der geladenen NFO weicht ab: {path} '
+                             f'(srrDB {expected[path]:08X}, Download {crc:08X}). Keine Übergabe an upPollo.')
+        replacements[path.as_posix()] = data
+        messages.append(f'srrDB: Original-NFO geladen und geprüft: {path} (lokal {local_crc:08X}, Original {crc:08X}).')
+    messages.append(f'srrDB OK: {release}, {len(expected)} Dateinamen, Pfade und CRC32-Prüfsummen stimmen überein.')
+    return '\n'.join(messages), replacements

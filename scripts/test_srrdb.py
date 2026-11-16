@@ -36,11 +36,13 @@ class CheckTests(unittest.TestCase):
     def read(self, url):
         if url == 'https://api.srrdb.com/v1/details/Movie-G':
             return json.dumps(self.details).encode()
+        if url == 'https://www.srrdb.com/download/file/Movie-G/movie.nfo':
+            return b'abc'
         self.assertEqual(url, 'https://www.srrdb.com/download/file/Movie-G/Subs/movie.srr')
         return self.srr
 
     def run_check(self, folder='Movie-G'):
-        return check('Movie-G', folder, self.files, self.read)
+        return check('Movie-G', folder, self.files, self.read)[0]
 
     def test_all_present(self):
         self.assertIn('4 Dateinamen', self.run_check())
@@ -64,7 +66,7 @@ class CheckTests(unittest.TestCase):
         self.details['archived-files'][0]['size'] = 2
         self.assertIn('CRC32', self.run_check())
         self.details['files'][0]['crc'] = '00000000'
-        with self.assertRaisesRegex(ValueError, r'movie\.nfo \(srrDB 00000000, lokal 352441C2\)'):
+        with self.assertRaisesRegex(ValueError, r'movie\.nfo \(srrDB 00000000, Download 352441C2\)'):
             self.run_check()
 
     def test_changed_video_and_subtitles(self):
@@ -72,8 +74,23 @@ class CheckTests(unittest.TestCase):
         source.write_bytes(b'abd')
         with self.assertRaises(ValueError) as caught:
             self.run_check()
-        for name in self.files:
+        for name in ('Subs/movie.idx', 'Subs/movie.sub', 'movie.mkv'):
             self.assertIn('CRC32 weicht ab: ' + name, str(caught.exception))
+
+    def test_recover_only_wrong_nfo_with_exact_original_bytes(self):
+        source = self.files['movie.nfo'].with_name('raw.nfo')
+        source.write_bytes(b'abc\r\n')
+        self.files['movie.nfo'] = source
+        report, originals = check('Movie-G', 'Movie-G', self.files, self.read)
+        self.assertEqual(originals, {'movie.nfo': b'abc'})
+        self.assertIn('Original-NFO geladen und geprüft: movie.nfo', report)
+        self.assertEqual(source.read_bytes(), b'abc\r\n')
+        def unavailable(url):
+            if url.endswith('movie.nfo'):
+                raise OSError('404')
+            return self.read(url)
+        with self.assertRaisesRegex(ValueError, 'movie.nfo nicht abrufbar'):
+            check('Movie-G', 'Movie-G', self.files, unavailable)
 
     def test_streamed_video(self):
         data = bytes(range(256)) * 5000

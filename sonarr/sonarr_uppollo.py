@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.error
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from srrdb_check import check as check_srrdb
+from srrdb_check import check as check_srrdb, store_nfo
 
 # Only NFO and subtitle sidecars are eligible for Transit. Samples and other
 # scene extras must never be copied or uploaded.
@@ -515,7 +515,15 @@ def run(config, event, args):
             require(file.stat().st_size > 0 and file.stat().st_dev == base.stat().st_dev, 'Video leer oder auf anderem Dateisystem')
         require(len({x['relative'] for x in plan['videos'] + extras}) == len(plan['videos'] + extras), 'Namenskollision in Transit')
         files = {item['relative']: item.get('imported') or item['snapshot'] for item in plan['videos'] + extras}
-        log(check_srrdb(plan['release'], transit_name if kind == 'directory' else None, files))
+        report, replacements = check_srrdb(plan['release'], transit_name if kind == 'directory' else None, files)
+        log(report)
+        for item in extras:
+            if item['relative'] in replacements:
+                data = replacements[item['relative']]
+                item['sha256'] = hashlib.sha256(data).hexdigest()
+                snapshot = extras_spool / ('srrdb-' + item['sha256'] + '.extra')
+                store_nfo(snapshot, data)
+                item['snapshot'] = str(snapshot)
         plan['extras'] = extras
         write_json(spool / 'plan.json', plan)
         with transit_locks(base, plan):

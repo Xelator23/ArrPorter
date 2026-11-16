@@ -90,6 +90,8 @@ ArrPorter liest diese Dateien blockweise vollständig und vergleicht die CRC32 i
 
 Für separat archivierte Untertitel liest ArrPorter zusätzlich die zugehörigen Subs-SRR-Metadaten. Sample, Proof, SFV und die ursprünglichen Archivteile gehören nicht zum Transit. Fehlt beispielsweise die IDX eines VobSub-Paars, enthält das Joblog den fehlenden Pfad. Anders benannte Dateien erscheinen unter „unerwarteter Name/Pfad“. In beiden Fällen endet der Import-Hook vor dem Anlegen des Video-Transits und vor der Übergabe an upPollo. ArrPorter lädt keine Untertitel nach und korrigiert keine Namen.
 
+Hat eine vorhandene NFO am erwarteten Pfad eine andere CRC32, ruft ArrPorter die Original-NFO dieses Releases von srrDB ab. Es übernimmt die empfangenen Bytes einschließlich Kodierung und Zeilenenden erst nach erfolgreichem CRC32-Abgleich. Bei einem Download- oder Prüffehler endet der Auftrag vor der Übergabe. Im Radarr-Livebetrieb landet die geprüfte NFO im Filmordner und im Transit. Sonarr speichert sie separat bei den Extras des Auftrags und verwendet diese Sicherung für den Transit. Auch im Probelauf werden Abruf und Prüfsumme getestet.
+
 Bei „Kein Eintrag“ laufen die lokalen Prüfungen wie bisher weiter. Netzwerkfehler, unlesbare Metadaten und angekündigte Subs ohne auswertbare Dateiliste brechen die Übergabe ab. Prüfe das Joblog, behebe die Ursache und stoße den Import-Hook erneut an. Bereits vorhandene Jobstatus werden weiterhin gegen doppelte Übergaben geschützt.
 
 ## 5. Cleanup separat aktivieren

@@ -357,14 +357,31 @@ def main():
         e = os.environ
         preview = e.get('RADARR_EXTRAS_PREVIEW')
         movie = Path(e['RT_BASE'])
-        s = plan(base, movie, Path(e['RT_VIDEO']), e['RT_VIDEO_NAME'], e['RT_FOLDER'], e['RT_RELEASE'], e['RT_JOB'], read(e['RADARR_EXTRAS_MANIFEST']), e.get('RT_NFO', ''), preview)
+        manifest = read(e['RADARR_EXTRAS_MANIFEST'])
+        s = plan(base, movie, Path(e['RT_VIDEO']), e['RT_VIDEO_NAME'], e['RT_FOLDER'], e['RT_RELEASE'], e['RT_JOB'], manifest, e.get('RT_NFO', ''), preview)
         s['downloadId'] = e['RT_HASH']
         guard(s)
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-        from srrdb_check import check
+        from srrdb_check import check, store_nfo
         files = {item['relative']: item['source'] for item in s['files']}
         folder = s['transitFolder'] if s['transitKind'] == 'directory' else None
-        print(check(s['release'], folder, files), file=sys.stderr)
+        report, replacements = check(s['release'], folder, files)
+        print(report, file=sys.stderr)
+        for item in s['files']:
+            if item['relative'] in replacements:
+                data = replacements[item['relative']]
+                imdb_ids = set(re.findall(rb'tt[0-9]{7,10}', data, re.I))
+                imdb = e.get('radarr_movie_imdbid', '')
+                require(not imdb_ids or not imdb or imdb_ids == {imdb.encode()}, 'Original-NFO-IMDb widerspricht Radarr')
+                item['sha256'] = hashlib.sha256(data).hexdigest()
+                item['size'] = len(data)
+                if e['RT_DRY_RUN'] != 'true':
+                    store_nfo(exact(item['source'], True), data)
+                    if not preview:
+                        for entry in manifest['files']:
+                            if entry['path'] == item['source']:
+                                entry['sha256'] = item['sha256']
+                        write(Path(e['RADARR_EXTRAS_MANIFEST']), manifest)
         if e['RT_DRY_RUN'] != 'true':
             if preview:
                 from radarr_extras import sync
