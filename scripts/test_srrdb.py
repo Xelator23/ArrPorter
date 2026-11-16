@@ -1,11 +1,45 @@
+import io
 import json
 from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError, URLError
 import zlib
 
-from srrdb_check import check, subs_members
+from srrdb_check import check, fetch, subs_members
+
+
+class FetchTests(unittest.TestCase):
+    url = 'https://api.srrdb.com/v1/details/Movie-G'
+
+    @patch('srrdb_check.time.sleep')
+    @patch('srrdb_check.build_opener')
+    def test_handshake_timeout_then_success(self, opener, sleep):
+        request = opener.return_value.open
+        request.side_effect = [URLError(TimeoutError('The handshake operation timed out')), io.BytesIO(b'ok')]
+        self.assertEqual(fetch(self.url), b'ok')
+        self.assertEqual([call.kwargs['timeout'] for call in request.call_args_list], [15, 30])
+        sleep.assert_called_once_with(2)
+
+    @patch('srrdb_check.time.sleep')
+    @patch('srrdb_check.build_opener')
+    def test_persistent_timeout_stops(self, opener, sleep):
+        opener.return_value.open.side_effect = TimeoutError('timed out')
+        with self.assertRaisesRegex(ValueError, 'Versuch 2/2'):
+            fetch(self.url)
+        self.assertEqual(opener.return_value.open.call_count, 2)
+        sleep.assert_called_once_with(2)
+
+    @patch('srrdb_check.time.sleep')
+    @patch('srrdb_check.build_opener')
+    def test_http_error_stops_immediately(self, opener, sleep):
+        opener.return_value.open.side_effect = HTTPError(self.url, 404, 'Not found', {}, None)
+        with self.assertRaisesRegex(ValueError, 'HTTP Error 404'):
+            fetch(self.url)
+        opener.return_value.open.assert_called_once()
+        sleep.assert_not_called()
 
 
 def block(kind, payload=b'', flags=0):

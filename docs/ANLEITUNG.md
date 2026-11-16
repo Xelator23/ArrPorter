@@ -94,7 +94,7 @@ Fehlt eine bei srrDB gelistete NFO im Download oder weicht ihre CRC32 ab, ruft A
 
 Im Radarr-Livebetrieb landet die geprüfte NFO im Filmordner und im Transit. Sonarr speichert sie bei den Extras des Auftrags und verwendet diese Sicherung für den Transit. Auch im Probelauf werden Abruf und Prüfsumme getestet. Bei einer ergänzten Datei steht im Joblog `lokal fehlend` zusammen mit der CRC32 des Originals.
 
-Bei „Kein Eintrag“ laufen die lokalen Prüfungen wie bisher weiter. Netzwerkfehler, unlesbare Metadaten und angekündigte Subs ohne auswertbare Dateiliste brechen die Übergabe ab. Prüfe das Joblog, behebe die Ursache und stoße den Import-Hook erneut an. Bereits vorhandene Jobstatus werden weiterhin gegen doppelte Übergaben geschützt.
+Bei „Kein Eintrag“ laufen die lokalen Prüfungen wie bisher weiter. Bei einem Timeout während des Verbindungsaufbaus oder Lesens wiederholt ArrPorter den betroffenen srrDB-Abruf nach zwei Sekunden einmal. Das Socket-Timeout beträgt beim ersten Versuch 15 Sekunden, beim zweiten 30 Sekunden. Scheitert auch dieser Versuch, nennt die Fehlermeldung die betroffene URL. Netzwerkfehler, unlesbare Metadaten und angekündigte Subs ohne auswertbare Dateiliste brechen die Übergabe ab. Prüfe das Joblog, behebe die Ursache und stoße den Import-Hook erneut an. Bereits vorhandene Jobstatus werden weiterhin gegen doppelte Übergaben geschützt.
 
 ## 5. Cleanup separat aktivieren
 

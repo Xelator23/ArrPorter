@@ -5,7 +5,9 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import struct
+import sys
 import tempfile
+import time
 from urllib.error import URLError
 from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, build_opener
@@ -24,14 +26,22 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def fetch(url):
-    try:
-        with build_opener(NoRedirect()).open(url, timeout=15) as response:
-            data = response.read(LIMIT + 1)
-    except (OSError, URLError, http.client.HTTPException) as error:
-        raise ValueError(f'srrDB: Metadaten nicht abrufbar ({error}).') from None
-    if len(data) > LIMIT:
-        raise ValueError('srrDB: Metadaten überschreiten das Größenlimit.')
-    return data
+    timeouts = (15, 30)
+    for attempt, timeout in enumerate(timeouts, start=1):
+        try:
+            with build_opener(NoRedirect()).open(url, timeout=timeout) as response:
+                data = response.read(LIMIT + 1)
+            if len(data) > LIMIT:
+                raise ValueError('srrDB: Metadaten überschreiten das Größenlimit.')
+            return data
+        except (OSError, http.client.HTTPException) as error:
+            cause = error.reason if isinstance(error, URLError) else error
+            if isinstance(cause, TimeoutError) and attempt < len(timeouts):
+                print(f'srrDB: Zeitüberschreitung beim Abruf von {url}. Neuer Versuch in 2 Sekunden.',
+                      file=sys.stderr, flush=True)
+                time.sleep(2)
+                continue
+            raise ValueError(f'srrDB: Abruf von {url} fehlgeschlagen (Versuch {attempt}/{len(timeouts)}): {error}.') from None
 
 
 def relative(name):
