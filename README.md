@@ -13,6 +13,20 @@
 
 **[Gemeinsame Konfiguration und Migration](docs/ANLEITUNG.md)** · [Radarr einrichten](docs/RADARR.md) · [Sonarr einrichten](docs/SONARR.md) · [Konfigurationsvorlage](arrporter.conf.example)
 
+## srrDB-Prüfung vor dem Upload
+
+Radarr und Sonarr fragen beim Import den exakten Release-Namen bei srrDB ab. Gibt es einen Eintrag, vergleicht ArrPorter die geplanten Originalnamen und Unterordner einschließlich Groß-/Kleinschreibung. Für jedes Video, jede NFO und jeden unterstützten Untertitel liest ArrPorter die Datei vollständig und vergleicht ihre CRC32 mit der Referenz. Das gilt auch im Probelauf.
+
+| Meldung im Joblog | Was beim Import passiert |
+|---|---|
+| `srrDB OK` | Namen, Pfade und Prüfsummen stimmen. Der Import-Hook fährt fort. |
+| `fehlt`, `unerwarteter Name/Pfad` oder `CRC32 weicht ab` | ArrPorter stoppt vor der Übergabe an upPollo. Das Log nennt die betroffene Datei und bei einem CRC32-Fehler beide Prüfwerte. |
+| `Kein Eintrag` | Das Release wird mit den lokalen Prüfungen weiterverarbeitet. Das gilt auch für P2P-Releases ohne srrDB-Eintrag. |
+
+Ist srrDB nicht erreichbar oder fehlt eine benötigte Referenz-Prüfsumme in einem bekannten Release, stoppt die Übergabe ebenfalls. [Details zum srrDB-Abgleich](docs/ANLEITUNG.md#srrdb-abgleich-vor-der-übergabe)
+
+## Konfiguration und Probelauf
+
 Adressen und Zugangsdaten stehen einmal in der privaten `arrporter.conf`. Jeder Dienst hat seine eigene `filters.conf`, seinen Transitpfad und seinen eigenen Schalter für den Probelauf.
 
 Beide Dienste starten in der Vorlage im Probelauf. ArrPorter prüft Radarr-Extras in einem temporären Verzeichnis. Sonarr sichert Extras für das spätere Sammelereignis. Der reguläre Bibliotheksimport durch Radarr oder Sonarr findet in beiden Fällen statt.

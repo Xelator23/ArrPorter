@@ -20,3 +20,7 @@ sonarr_eventtype=Test bash sonarr/sonarr-uppollo.sh
 **Erster Import.** Importiere ein Release und prüfe das Joblog unter dem konfigurierten Transitpfad in `_logs/`. `DRY RUN OK` bestätigt den Probelauf. Bei `SKIP` steht der Grund im Log. Prüfe bei einer Einzelfolge die Anzahl der Videos und bei einem Staffelpack die Vollständigkeit aller erwarteten Folgen. Auch ein Pack mit nur einer NFO ist möglich. Setze danach `SONARR_DRY_RUN=false`, wenn neue Importe an upPollo übergeben werden sollen. Prüfe den ersten Liveauftrag in upPollo und im Download-Client.
 
 [Gemeinsame Konfiguration, Cleanup und Fehlerdiagnose](ANLEITUNG.md)
+
+### srrDB im Probelauf prüfen
+
+Lass `SONARR_DRY_RUN=true` gesetzt und importiere eine Folge oder ein Staffelpack. Die srrDB-Abfrage läuft bei **On Import Complete**. Für ein Pack prüft ArrPorter die geplanten Folgen und Extras gemeinsam anhand des Release-Eintrags. Führt srrDB etwa eine NFO für das gesamte Pack auf, wird genau diese an ihrem ursprünglichen Pfad erwartet. Im Joblog bestätigt `srrDB OK` die Namen, Pfade und CRC32-Prüfsummen. [Alle Prüfergebnisse und ihre Bedeutung](../README.md#srrdb-prüfung-vor-dem-upload)

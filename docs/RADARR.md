@@ -20,3 +20,7 @@ radarr_eventtype=Test bash radarr/radarr-import-chain.sh
 **Erster Import.** Importiere ein Release und prüfe das Joblog unter dem konfigurierten Transitpfad in `_logs/`. `DRY RUN OK` bestätigt den Probelauf. Bei `SKIP` steht der Grund im Log. Prüfe, ob der ursprüngliche Videoname, die NFO des aktuellen Downloads und die Untertitel unter `Subs/` zum Film passen. Setze danach `RADARR_DRY_RUN=false`, wenn neue Importe an upPollo übergeben werden sollen. Prüfe den ersten Liveauftrag in upPollo und im Download-Client.
 
 [Gemeinsame Konfiguration, Cleanup und Fehlerdiagnose](ANLEITUNG.md)
+
+### srrDB im Probelauf prüfen
+
+Lass `RADARR_DRY_RUN=true` gesetzt und importiere einen Film. Der Verbindungstest prüft die upPollo-API. Erst der Filmimport liefert den Release-Namen für die srrDB-Abfrage. Bei einem bekannten Release bestätigt `srrDB OK` im Joblog, dass Videodatei und Extras unter den erwarteten Namen und Pfaden vorliegen und ihre CRC32 übereinstimmt. Bei `CRC32 weicht ab` findest du den Dateinamen sowie den srrDB-Wert und deinen lokalen Wert in derselben Zeile. [Alle Prüfergebnisse und ihre Bedeutung](../README.md#srrdb-prüfung-vor-dem-upload)
