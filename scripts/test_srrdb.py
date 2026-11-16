@@ -12,10 +12,10 @@ def block(kind, payload=b'', flags=0):
     return struct.pack('<HBHH', kind * 257, kind, flags, 7 + len(payload)) + payload
 
 
-def archive_member(name):
+def archive_member(name, crc=0x352441C2, flags=0x8000):
     raw = name.encode()
-    header = struct.pack('<IIBIIBBHI', 3, 3, 2, 0, 0, 20, 48, len(raw), 32)
-    return block(0x74, header + raw, 0x8000)
+    header = struct.pack('<IIBIIBBHI', 3, 3, 2, crc, 0, 20, 48, len(raw), 32)
+    return block(0x74, header + raw, flags)
 
 
 class CheckTests(unittest.TestCase):
@@ -29,9 +29,9 @@ class CheckTests(unittest.TestCase):
         stored = block(0x6a, struct.pack('<IH', 3, 4) + b'note', 0x8000) + b'abc'
         self.srr = block(0x69) + stored + archive_member('movie.idx') + archive_member('movie.sub')
         self.details = {'name': 'Movie-G', 'files': [
-            {'name': 'movie.nfo', 'size': 3}, {'name': 'Sample/test.mkv', 'size': 1},
+            {'name': 'movie.nfo', 'size': 3, 'crc': '352441c2'}, {'name': 'Sample/test.mkv', 'size': 1},
             {'name': 'Subs/movie.srr', 'size': len(self.srr), 'crc': f'{zlib.crc32(self.srr):08X}'}],
-            'archived-files': [{'name': 'movie.mkv', 'size': 3}]}
+            'archived-files': [{'name': 'movie.mkv', 'size': 3, 'crc': '352441C2'}]}
 
     def read(self, url):
         if url == 'https://api.srrdb.com/v1/details/Movie-G':
@@ -60,13 +60,50 @@ class CheckTests(unittest.TestCase):
         self.files = {'movie.mkv': self.files['movie.mkv']}
         self.assertIn('1 Dateinamen', self.run_check(None))
 
-    def test_wrong_size_and_invalid_metadata(self):
+    def test_crc_independent_of_reported_size(self):
         self.details['archived-files'][0]['size'] = 2
-        with self.assertRaisesRegex(ValueError, 'Größe weicht ab'):
+        self.assertIn('CRC32', self.run_check())
+        self.details['files'][0]['crc'] = '00000000'
+        with self.assertRaisesRegex(ValueError, r'movie\.nfo \(srrDB 00000000, lokal 352441C2\)'):
             self.run_check()
+
+    def test_changed_video_and_subtitles(self):
+        source = self.files['movie.mkv']
+        source.write_bytes(b'abd')
+        with self.assertRaises(ValueError) as caught:
+            self.run_check()
+        for name in self.files:
+            self.assertIn('CRC32 weicht ab: ' + name, str(caught.exception))
+
+    def test_streamed_video(self):
+        data = bytes(range(256)) * 5000
+        self.files['movie.mkv'].write_bytes(data)
+        self.files = {'movie.mkv': self.files['movie.mkv']}
+        self.details['files'] = []
+        self.details['archived-files'][0]['crc'] = f'{zlib.crc32(data):08x}'
+        self.assertIn('CRC32', self.run_check())
+
+    def test_missing_invalid_and_conflicting_reference(self):
+        del self.details['files'][0]['crc']
+        with self.assertRaisesRegex(ValueError, 'CRC32-Referenz fehlt: movie.nfo'):
+            self.run_check()
+        self.details['files'].append({'name': 'movie.mkv', 'crc': '00000000'})
+        with self.assertRaisesRegex(ValueError, 'Widersprüchliche CRC32'):
+            self.run_check()
+        self.details['files'].pop()
         self.details['files'][2]['crc'] = 'bad'
         with self.assertRaisesRegex(ValueError, 'CRC32'):
             self.run_check()
+
+    def test_stored_and_split_subtitle_crc(self):
+        name = b'movie.idx'
+        stored = block(0x6a, struct.pack('<IH', 3, len(name)) + name, 0x8000) + b'abc'
+        first = archive_member('movie.sub', 0x12345678, 0x8002)
+        final = archive_member('movie.sub', 0x352441C2, 0x8001)
+        members = subs_members(block(0x69) + stored + first + final)
+        self.assertEqual({str(p): crc for p, crc in members.items()},
+                         {'movie.idx': 0x352441C2, 'movie.sub': 0x352441C2})
+        self.assertEqual(list(subs_members(block(0x69) + first).values()), [None])
 
     def test_unknown_release_and_errors(self):
         self.details = []

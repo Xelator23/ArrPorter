@@ -16,15 +16,20 @@ import io
 import json
 import os
 import urllib.request
+import zlib
 
 class Fixture:
     def open(self, url, timeout):
         assert url.startswith('https://api.srrdb.com/v1/details/'), url
-        if os.getenv('MOCK_SRRDB_MISSING'):
+        if os.getenv('MOCK_SRRDB_MISSING') or os.getenv('MOCK_SRRDB_CORRUPT'):
             release = url.rsplit('/', 1)[1]
-            result = {'name': release, 'files': [], 'archived-files': [
-                {'name': 'original.mkv', 'size': 14},
-                {'name': 'Subs/forced.idx', 'size': 12}]}
+            crc = zlib.crc32(b'video fixture\n')
+            rows = [{'name': 'Original.Download.Name.mkv', 'size': 14, 'crc': f'{crc:08X}'}]
+            if os.getenv('MOCK_SRRDB_MISSING'):
+                rows.append({'name': 'Subs/forced.idx', 'size': 12, 'crc': '12345678'})
+            else:
+                rows[0]['crc'] = '00000000'
+            result = {'name': release, 'files': [], 'archived-files': rows}
         else:
             result = []
         return io.BytesIO(json.dumps(result).encode())
@@ -109,6 +114,11 @@ if MOCK_SRRDB_MISSING=true run; then exit 1; fi
 grep -Fq 'fehlt: Subs/forced.idx' "$ROOT/transit-srrdb-missing/_logs/"*.log
 [[ ! -e "$MOCK_CALLS" && ! -d "$ROOT/transit-srrdb-missing/$FOLDER" ]]
 echo 'PASS: srrDB names missing subtitle and stops before staging or POST'
+setup_case srrdb-crc
+if MOCK_SRRDB_CORRUPT=true run; then exit 1; fi
+grep -Fq 'CRC32 weicht ab: Original.Download.Name.mkv' "$ROOT/transit-srrdb-crc/_logs/"*.log
+[[ ! -e "$MOCK_CALLS" && ! -d "$ROOT/transit-srrdb-crc/$FOLDER" ]]
+echo 'PASS: mismatched CRC32 stops before staging or POST'
 setup_case accepted
 run
 assert_state accepted_unverified

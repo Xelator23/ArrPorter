@@ -42,6 +42,30 @@ def relative(name):
     return PurePosixPath(name)
 
 
+def record_crc(entries, path, crc):
+    previous = entries.get(path)
+    if previous is not None and crc is not None and previous != crc:
+        raise ValueError(f'srrDB: Widersprüchliche CRC32 für {path}.')
+    entries[path] = previous if crc is None else crc
+
+
+def api_crc(row, path):
+    value = row.get('crc')
+    if value is None or value == '':
+        return None
+    if not isinstance(value, str) or not re.fullmatch(r'[0-9a-fA-F]{8}', value):
+        raise ValueError(f'srrDB: Ungültige CRC32 für {path}.')
+    return int(value, 16)
+
+
+def file_crc(path):
+    checksum = 0
+    with path.open('rb') as stream:
+        while chunk := stream.read(1024 * 1024):
+            checksum = zlib.crc32(chunk, checksum)
+    return checksum
+
+
 def subs_members(data):
     """Read SRR stored-file and RAR4 file headers. No extraction or decompression."""
     if not data.startswith(b'\x69\x69\x69'):
@@ -63,26 +87,24 @@ def subs_members(data):
             if name_length == 0 or 13 + name_length > length:
                 raise ValueError('srrDB: Ungültiger gespeicherter Dateiname.')
             path = relative(header[13:13 + name_length].decode('utf-8'))
-            if path.suffix.lower() in SUBS:
-                members[path] = size
-            offset += size
-            if offset > len(data):
+            end = offset + size
+            if end > len(data):
                 raise ValueError('srrDB: Unvollständige SRR-Datei.')
+            if path.suffix.lower() in SUBS:
+                record_crc(members, path, zlib.crc32(memoryview(data)[offset:end]))
+            offset = end
         elif kind == 0x74:
             if length < 32 or flags & 0x0200:
                 raise ValueError('srrDB: Unlesbarer oder nicht unterstützter RAR-Dateiname.')
-            size = int.from_bytes(header[11:15], 'little')
             start = 40 if flags & 0x100 else 32
-            if start == 40:
-                size += int.from_bytes(header[36:40], 'little') << 32
             end = start + int.from_bytes(header[26:28], 'little')
             if end <= start or end > length:
                 raise ValueError('srrDB: Unvollständiger RAR-Dateiname.')
             path = relative(header[start:end].decode('utf-8'))
             if path.suffix.lower() in SUBS:
-                if path in members and members[path] != size:
-                    raise ValueError(f'srrDB: Widersprüchliche Angaben zu {path}.')
-                members[path] = size
+                # Only the last volume carries the CRC of the full unpacked file.
+                crc = None if flags & 0x0002 else int.from_bytes(header[16:20], 'little')
+                record_crc(members, path, crc)
         elif kind not in {0x69, 0x71, 0x72, 0x73, 0x7B}:
             raise ValueError(f'srrDB: Unbekannter Block in der Subs-SRR ({kind:#x}).')
     if not members:
@@ -121,22 +143,15 @@ def reference(release, read):
                 sub_dirs.add(path.parent)
             if suffix not in MEDIA and not (subtitle_area and suffix == '.srr'):
                 continue
-            size = row.get('size')
-            if type(size) is not int or size < 0:
-                raise ValueError(f'srrDB: Größenangabe fehlt für {path}.')
+            crc = api_crc(row, path)
             if suffix == '.srr':
-                if size > LIMIT:
-                    raise ValueError(f'srrDB: Subs-Metadaten zu groß: {path}.')
                 data = read(f'https://www.srrdb.com/download/file/{part}/{quote(str(path))}')
-                if len(data) != size or f'{zlib.crc32(data):08X}' != str(row.get('crc')).upper():
-                    raise ValueError(f'srrDB: Größe oder CRC32 der Metadaten stimmt nicht für {path}.')
-                entries = {path.parent / p: n for p, n in subs_members(data).items()}
+                if zlib.crc32(data) != crc:
+                    raise ValueError(f'srrDB: CRC32 der Metadaten fehlt oder stimmt nicht für {path}.')
+                for member, member_crc in subs_members(data).items():
+                    record_crc(expected, path.parent / member, member_crc)
             else:
-                entries = {path: size}
-            for entry, length in entries.items():
-                if entry in expected and expected[entry] != length:
-                    raise ValueError(f'srrDB: Widersprüchliche Größe für {entry}.')
-                expected[entry] = length
+                record_crc(expected, path, crc)
     for directory in sub_dirs:
         if not any(p.suffix.lower() in SUBS and directory in p.parents for p in expected):
             raise ValueError(f'srrDB: Untertitel unter {directory} angekündigt, Originalnamen nicht belegbar.')
@@ -159,8 +174,12 @@ def check(release, folder, files, read=None):
     for path in sorted(actual.keys() - expected.keys()):
         problems.append(f'unerwarteter Name/Pfad: {path}')
     for path in sorted(expected.keys() & actual.keys()):
-        if actual[path].stat().st_size != expected[path]:
-            problems.append(f'Größe weicht ab: {path}')
+        if expected[path] is None:
+            problems.append(f'CRC32-Referenz fehlt: {path}')
+            continue
+        checksum = file_crc(actual[path])
+        if checksum != expected[path]:
+            problems.append(f'CRC32 weicht ab: {path} (srrDB {expected[path]:08X}, lokal {checksum:08X})')
     if problems:
         raise ValueError('srrDB: ' + '; '.join(problems) + '. Keine Übergabe an upPollo.')
-    return f'srrDB OK: {release}, {len(expected)} Dateinamen, Pfade und Größen stimmen überein.'
+    return f'srrDB OK: {release}, {len(expected)} Dateinamen, Pfade und CRC32-Prüfsummen stimmen überein.'
