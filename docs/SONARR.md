@@ -4,7 +4,8 @@
 2. Trage den bisherigen oder gewünschten `SONARR_TRANSIT_BASE` ein und setze für den ersten Durchlauf `SONARR_DRY_RUN=true`. Bearbeite die Release- und Quellenfilter in `sonarr/filters.conf`.
 3. Öffne **Einstellungen → Verbindungen (Connect) → + → Custom Script**. Verwende bei der dokumentierten Unraid-Installation `/scripts/arrporter/sonarr/sonarr-uppollo.sh` als Pfad. Bei einer nativen Installation verwende den absoluten Skriptpfad aus Sicht von Sonarr.
 4. Aktiviere **On Grab**, **On File Import**, **On File Upgrade** und **On Import Complete**. Der Grab und die Einzelmeldungen liefern die Zuordnung der Folgen. Bei einem Staffelpack löst erst der abgeschlossene Import die gemeinsame Übergabe aus.
-5. Klicke **Test** und speichere die Verbindung. Der Test fragt die upPollo-API ohne Upload ab. Für die Textausgabe kannst du auf Unraid denselben Test im Container starten.
+5. Entferne `nfo` bzw. `.nfo` aus **Import Extra Files** in Sonarr. ArrPorter sichert die Original-NFO mit den Extras des aktuellen Downloads für die Übergabe an upPollo.
+6. Klicke **Test** und speichere die Verbindung. Der Test fragt die upPollo-API ohne Upload ab. Für die Textausgabe kannst du auf Unraid denselben Test im Container starten.
 
 ```bash
 docker exec -e sonarr_eventtype=Test Sonarr bash /scripts/arrporter/sonarr/sonarr-uppollo.sh

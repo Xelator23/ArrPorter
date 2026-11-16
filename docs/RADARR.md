@@ -4,9 +4,8 @@
 2. Trage den bisherigen oder gewünschten `RADARR_TRANSIT_BASE` ein und setze für den ersten Durchlauf `RADARR_DRY_RUN=true`. Bearbeite die Release- und Quellenfilter in `radarr/filters.conf`.
 3. Öffne **Einstellungen → Verbindungen (Connect) → + → Custom Script**. Verwende bei der dokumentierten Unraid-Installation `/scripts/arrporter/radarr/radarr-import-chain.sh` als Pfad. Bei einer nativen Installation verwende den absoluten Skriptpfad aus Sicht von Radarr.
 4. Aktiviere **On Import** und **On Upgrade**. Der Hook übernimmt beim Import die Extras des aktuellen Downloads. Bei einem Upgrade kann er alte NFOs im Filmordner entfernen. Verwende für den ersten Import einen Film, dessen NFOs aus dem aktuellen Download stammen.
-5. Klicke **Test** und speichere die Verbindung. Der Test fragt die upPollo-API ohne Upload ab. Für die Textausgabe kannst du auf Unraid denselben Test im Container starten.
-
-Soll ArrPorter die Original-NFO übernehmen, entferne `.nfo` aus Radarrs **Import Extra Files**. Radarr verwendet für über diese Einstellung importierte NFOs die Endung `.nfo-orig`. Bei älteren Imports lohnt es sich daher, im Filmordner auch nach `*.nfo-orig` zu suchen.
+5. Entferne `nfo` bzw. `.nfo` aus **Import Extra Files** in Radarr. ArrPorter übernimmt die Original-NFO aus dem aktuellen Download über seinen Extras-Import.
+6. Klicke **Test** und speichere die Verbindung. Der Test fragt die upPollo-API ohne Upload ab. Für die Textausgabe kannst du auf Unraid denselben Test im Container starten.
 
 ```bash
 docker exec -e radarr_eventtype=Test Radarr bash /scripts/arrporter/radarr/radarr-import-chain.sh

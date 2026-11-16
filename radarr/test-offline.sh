@@ -194,7 +194,6 @@ mkdir -p "$ROOT/download/$FOLDER"
 export radarr_moviefile_sourcefolder="$ROOT/download/$FOLDER"
 export radarr_moviefile_sourcepath="$radarr_moviefile_sourcefolder/Original.Download.Name.mkv"
 printf 'library sidecar\n' > "$ROOT/media/video.nfo"
-printf 'original Radarr extra\n' > "$ROOT/media/video.nfo-orig"
 printf 'old\n' > "$ROOT/media/release.nfo"
 setup_case chain_srrdb_failure
 if MOCK_SRRDB_MISSING=true bash "$HERE/radarr-import-chain.sh"; then exit 1; fi
@@ -209,7 +208,7 @@ setup_case chain_live
 bash "$HERE/radarr-import-chain.sh"
 cmp "$radarr_moviefile_sourcefolder/release.nfo" "$ROOT/media/release.nfo"
 cmp "$ROOT/media/release.nfo" "$ROOT/transit-chain_live/$FOLDER/release.nfo"
-[[ ! -e "$ROOT/media/video.nfo" && -f "$ROOT/media/video.nfo-orig" ]]
+[[ ! -e "$ROOT/media/video.nfo" ]]
 setup_case chain_no_nfo
 rm -- "$radarr_moviefile_sourcefolder/release.nfo"
 printf 'library sidecar\n' > "$ROOT/media/video.nfo"
